@@ -1,0 +1,312 @@
+import random
+from util.DataBase.Database import Response
+
+from typing import override, final, TypeAlias, Literal
+from pygame import Surface
+from components.Button import Button, ImageOption
+from components.Image import BackgroundImageComponent, ImageComponent, TextImageComponent, TextOption
+from components.TextInput import TextInput
+from .BasePage import BasePage
+import pygame 
+
+AuthSubEvents: TypeAlias = Literal["main", "sign_in", "sign_up", "security_overlay"]
+
+class Auth(BasePage):
+    @final
+    def __init__(self) -> None:
+        super().__init__()
+        self.change_page(new_state="authenticate")
+        self.auth_sub_events: dict[AuthSubEvents, bool] = {"main": True, "sign_in": False, "sign_up": False, "security_overlay": False}
+        self.security_code_value: int = 0
+        #self.init()
+
+    @override
+    def init(self) -> None:
+        super().init()
+
+        self.init_background(image_key="background_image2") 
+        self.text_surface: TextImageComponent = TextImageComponent(text_option=TextOption(text="Welcome to Elementa Clash", size=36, bold=True, align="center", max_width=int(self.screen_manager.current_size[0] * 0.8)), base_pos=(480, 108), anchor="center") # pyright: ignore[reportUninitializedInstanceVariable]
+        self.sign_in_button: Button = Button(image_option=ImageOption(image=self.load_image(image_key="button1")), text_option=TextOption(text="Sign In", size=16), position=(480 , 270), anchor="center") # pyright: ignore[reportUninitializedInstanceVariable]
+        self.sign_up_button: Button = Button(image_option=ImageOption(image=self.load_image(image_key="button1")), text_option=TextOption(text="Sign Up", size=16), position=(480 , 324), anchor="center") # pyright: ignore[reportUninitializedInstanceVariable]
+
+        self.overlay_background: ImageComponent = ImageComponent(image_option="confirmation_overlay", base_pos=(480, 324), anchor="center") # pyright: ignore[reportUninitializedInstanceVariable]
+
+        # Security Overlay Components
+        self.security_code_overlay: ImageComponent = ImageComponent(image_option="overlay2", base_pos=self.screen_manager.center_points, anchor="center") # pyright: ignore[reportUninitializedInstanceVariable]
+        
+        self.security_title_text: TextImageComponent = TextImageComponent(text_option=TextOption(text="Security Code!!", size=24, bold=True), base_pos=(480, 200), anchor="center") # pyright: ignore[reportUninitializedInstanceVariable]
+        self.security_code_text: TextImageComponent = TextImageComponent(text_option=TextOption(text="", size=18, bold=True), base_pos=(480, 260), anchor="center") # pyright: ignore[reportUninitializedInstanceVariable]
+        
+        self.new_code_button: Button = Button(image_option=ImageOption(image=self.load_image(image_key="button3")), text_option=TextOption(text="New Code", size=13), position=(360, 380), anchor="center") # pyright: ignore[reportUninitializedInstanceVariable]
+        self.confirm_security_code: Button = Button(image_option=ImageOption(image=self.load_image(image_key="button3")), text_option=TextOption(text="Register", size=13), position=(600, 380), anchor="center") # pyright: ignore[reportUninitializedInstanceVariable]
+        
+        def _constrains(text: str, allowed: str="abcdefghijklmnopqrstuvwxyz0123456789_.") -> bool:
+            for character in text:
+                if character not in allowed: return False
+            return True
+        
+        def length_check(text: str, min: int= 5, max: int= 10) -> bool:
+            text_length: int = len(text)
+            if text_length < min or text_length > max:
+                return False
+            return True
+    
+        def _existing_username(text: str) -> bool:
+            existing = ["123"]
+            if text in existing:
+                return False
+            return True
+
+        self.username_input: TextInput = TextInput(image_option=ImageOption(image=self.load_image(image_key="text_input1")), text_option=TextOption(text="", size=16, color=(128, 103, 89)), placeholder="Username", position=(480, 274), anchor="center", max_length=10) # pyright: ignore[reportUninitializedInstanceVariable]
+        self.username_input.validations = [( lambda text: _constrains(text) , "The username can only contain a-z, 0-9 and . _"), (_existing_username, "The username is already taken"), (length_check, "The username must be between 5-10 characters")]
+        
+        self.password_input: TextInput = TextInput(image_option=ImageOption(image=self.load_image(image_key="text_input1")), text_option=TextOption(text="", size=16, color=(128, 103, 89)), placeholder="Password", position=(480, 354), anchor="center", password=True) # pyright: ignore[reportUninitializedInstanceVariable]
+        self.password_input.validations = [(lambda text: length_check(text=text, min=8, max=15), "The password should be between 8-15 chars long"), (lambda text: text != self.username_input.text, "Password cannot be the same as the username")]
+
+        self.confirm_password_input: TextInput = TextInput(image_option=ImageOption(image=self.load_image(image_key="text_input1")), text_option=TextOption(text="", size=14, color=(128, 103, 89)), placeholder="Confirm Password", position=(480, 434), anchor="center", password=True) # pyright: ignore[reportUninitializedInstanceVariable]
+        self.confirm_password_input.validations = [(lambda text: length_check(text=text, min=8, max=15), "The password should be between 8-15 chars long"), (lambda text: text != self.username_input.text, "Password cannot be the same as the username"), (lambda text: text == self.password_input.text, "Passwords do not match!")]
+
+        smaller_btn_surface: Surface = self.resize_image(image=self.load_image(image_key="button1"), size=(120, 30))
+        self.submit_sign_in: Button = Button(image_option=ImageOption(image=smaller_btn_surface), text_option=TextOption(text="Sign In", size=12), position=(480, 420), anchor="center") # pyright: ignore[reportUninitializedInstanceVariable]
+        self.submit_sign_up: Button = Button(image_option=ImageOption(image=smaller_btn_surface), text_option=TextOption(text="Sign Up", size=12), position=(480, 490), anchor="center") # pyright: ignore[reportUninitializedInstanceVariable]
+        
+        self.toggle_password: Button = Button(image_option=ImageOption(colored_image=((20,20,20), (20,20))), text_option=TextOption(text="", size=0), key=pygame.K_v, position=(int(self.password_input.surface.rect.centerx + self.password_input.surface.rect.width * 0.6), self.password_input.surface.rect.centery), anchor="center") # pyright: ignore[reportUninitializedInstanceVariable]
+        self.go_back_button: Button = Button(image_option=ImageOption(colored_image=((20,20,20), (20,20))), text_option=TextOption(text="", size=0), key=pygame.K_b, position=(690, 430) ) # pyright: ignore[reportUninitializedInstanceVariable]
+        return
+
+    @override
+    def update(self) -> None:
+        super().update()
+        if self.db.response_queue.empty():
+            return
+
+        res: Response = self.db.response_queue.get_nowait()
+        if res.action == "sign_in":
+            if res.success:
+                self.change_page(new_state="main_menu")
+            else:
+                self.username_input.errors.append(res.message)
+                self.username_input.validate_text(text=self.username_input.text)
+        elif res.action == "sign_up":
+            if res.success:
+                print("Created")
+                self.set_sign_in(clear=True)
+                self.text_surface.text_option.set_text(text="Your Account has been created! Please Sign In")
+                self.text_surface.update_layout()
+            else:
+                self.username_input.errors.append(res.message)
+                self.username_input.validate_text(text=self.username_input.text)
+        elif res.action == "check_username":
+            if not res.success: 
+                self.show_security_overlay()
+            else:
+                self.username_input.errors.append(res.message)
+                self.username_input.validate_text(text=self.username_input.text)
+
+
+    def set_main(self) -> None:
+        self.auth_sub_events["main"] = True
+        self.auth_sub_events["sign_in"] = False
+        self.auth_sub_events["sign_up"] = False
+        self.auth_sub_events["security_overlay"] = False
+
+        self.text_surface.text_option.set_text(text="Welcome to Elementa Clash")
+        self.update_layout()
+
+    def set_sign_in(self, clear: bool=False) -> None: 
+        self.auth_sub_events["main"] = False
+        self.auth_sub_events["sign_in"] = True
+        self.auth_sub_events["sign_up"] = False
+        self.auth_sub_events["security_overlay"] = False
+
+        self.text_surface.text_option.set_text(text="Welcome Back Player")
+        
+        # Reset positions for Sign In
+        self.username_input.change_base_position((480, 274))
+        self.password_input.change_base_position((480, 354))
+        self.toggle_password.change_base_position((int(self.password_input.surface.rect.centerx + self.password_input.surface.rect.width * 0.6), 354))
+
+        if clear:
+            self.username_input.text = ""
+            self.username_input.text_surface.text_option.set_text("")
+            self.password_input.text = ""
+            self.password_input.text_surface.text_option.set_text("")
+            
+        self.update_layout()
+    
+    def set_sign_up(self, clear: bool=False) -> None: 
+        self.auth_sub_events["main"] = False
+        self.auth_sub_events["sign_in"] = False
+        self.auth_sub_events["sign_up"] = True
+        self.auth_sub_events["security_overlay"] = False
+
+        self.text_surface.text_option.set_text(text="Register to Elementa Clash")
+
+        # Shift positions up to accommodate the confirm password field
+        self.username_input.change_base_position((480, 234))
+        self.password_input.change_base_position((480, 314))
+        self.confirm_password_input.change_base_position((480, 394))
+        self.toggle_password.change_base_position((int(self.password_input.surface.rect.centerx + self.password_input.surface.rect.width * 0.6), 314))
+
+        if clear:
+            self.username_input.text = ""
+            self.username_input.text_surface.text_option.set_text("")
+            self.password_input.text = ""
+            self.password_input.text_surface.text_option.set_text("")
+            self.confirm_password_input.text = ""
+            self.confirm_password_input.text_surface.text_option.set_text("")
+            
+        self.update_layout()
+
+    def generate_security_code(self) -> None:
+        self.security_code_value = random.randint(100000, 999999)
+        self.security_code_text.text_option.set_text(text=f"Remember the security code \"{self.security_code_value}\"")
+        self.security_code_text.update_layout()
+
+    def show_security_overlay(self) -> None:
+        self.auth_sub_events["security_overlay"] = True
+        self.generate_security_code()
+        
+    def confirm_registration(self) -> None:
+        username: str = self.username_input.text
+        password: str = self.password_input.text
+        self.db.sign_up(username, password, self.security_code_value)
+
+    def submit_sign_in_form(self) -> None:
+        username: str = self.username_input.text
+        password: str = self.password_input.text
+
+        if username and password:
+            print("Validating the sign in info")
+            self.db.sign_in(username, password)
+        else:
+            print("Please enter both")
+        return
+
+    def submit_sign_up_form(self) -> None:
+        username: str = self.username_input.text
+        password: str = self.password_input.text
+        confirm_password: str = self.confirm_password_input.text
+
+        if username and password and confirm_password:
+            print("Validating the sign up info")
+            self.db.username_exists(username)
+        else:
+            print("Please fill out all fields")
+        return
+
+    @override
+    def add_events(self) -> None:
+        super().add_events()
+
+        # Input fields (Blocked if overlay is active)
+        active_form_condition = lambda: (self.auth_sub_events["sign_in"] or self.auth_sub_events["sign_up"]) and not self.auth_sub_events["security_overlay"]
+        
+        self.username_input.add_event_listeners(page_state=self.current_page, condition=active_form_condition)
+        self.password_input.add_event_listeners(page_state=self.current_page, condition=active_form_condition)
+        self.confirm_password_input.add_event_listeners(page_state=self.current_page, condition=lambda: self.auth_sub_events["sign_up"] and not self.auth_sub_events["security_overlay"])
+        
+        def toggle_view_password() -> None:
+            self.password_input.type_password = not self.password_input.type_password
+            self.confirm_password_input.type_password = not self.confirm_password_input.type_password
+            self.password_input._update_text_display()
+            self.confirm_password_input._update_text_display()
+
+        self.toggle_password.on_activate = lambda: toggle_view_password()
+        self.toggle_password.add_event_listeners(page_state=self.current_page, condition=active_form_condition)
+
+        # Main Page Buttons
+        self.sign_in_button.on_activate = lambda: self.set_sign_in(clear=True)
+        self.sign_in_button.add_event_listeners(page_state=self.current_page, condition=lambda: self.auth_sub_events["main"])
+
+        self.sign_up_button.on_activate = lambda: self.set_sign_up(clear=True)
+        self.sign_up_button.add_event_listeners(page_state=self.current_page, condition=lambda: self.auth_sub_events["main"])
+
+        # Sub Page Controls
+        self.go_back_button.on_activate = self.set_main
+        self.go_back_button.add_event_listeners(page_state=self.current_page, condition=active_form_condition)
+
+        self.submit_sign_in.on_activate = self.submit_sign_in_form
+        self.submit_sign_in.add_event_listeners(page_state=self.current_page, condition=lambda: self.auth_sub_events["sign_in"] and not self.auth_sub_events["security_overlay"] and self.username_input.valid and self.password_input.valid)
+
+        self.submit_sign_up.on_activate = self.submit_sign_up_form
+        self.submit_sign_up.add_event_listeners(page_state=self.current_page, condition=lambda: self.auth_sub_events["sign_up"] and not self.auth_sub_events["security_overlay"] and self.username_input.valid and self.password_input.valid and self.confirm_password_input.valid)
+
+        # Overlay Controls
+        self.new_code_button.on_activate = self.generate_security_code
+        self.new_code_button.add_event_listeners(page_state=self.current_page, condition=lambda: self.auth_sub_events["security_overlay"])
+
+        self.confirm_security_code.on_activate = self.confirm_registration
+        self.confirm_security_code.add_event_listeners(page_state=self.current_page, condition=lambda: self.auth_sub_events["security_overlay"])
+
+    @override
+    def update_layout(self) -> None:
+        super().update_layout()
+        self.text_surface.update_layout()
+        self.sign_in_button.update_layout()
+        self.sign_up_button.update_layout()
+
+        self.overlay_background.update_layout()
+        self.username_input.update_layout()
+        self.password_input.update_layout()
+        self.confirm_password_input.update_layout()
+        self.toggle_password.update_layout()
+        self.go_back_button.update_layout()
+
+        self.submit_sign_in.update_layout()
+        self.submit_sign_up.update_layout()
+        
+        self.security_code_overlay.update_layout()
+        self.security_title_text.update_layout()
+        self.security_code_text.update_layout()
+        self.new_code_button.update_layout()
+        self.confirm_security_code.update_layout()
+        return
+    
+    def draw_redirect(self) -> None:
+        self.text_surface.draw()
+        self.sign_in_button.draw()
+        self.sign_up_button.draw()
+        return
+    
+    def draw_sign_in(self) -> None:
+        self.username_input.draw()
+        self.password_input.draw()
+        self.toggle_password.draw()
+
+        self.go_back_button.draw()
+        self.submit_sign_in.draw()
+
+    def draw_sign_up(self) -> None:
+        self.username_input.draw()
+        self.password_input.draw()
+        self.confirm_password_input.draw()
+        self.toggle_password.draw()
+        
+        self.go_back_button.draw()
+        self.submit_sign_up.draw()
+        
+    def draw_security_overlay(self) -> None:
+        self.security_code_overlay.draw()
+        self.security_title_text.draw()
+        self.security_code_text.draw()
+        self.new_code_button.draw()
+        self.confirm_security_code.draw()
+        
+    @override
+    def draw(self) -> None:
+        self.quit_game_overlay_background.draw()
+        if self.auth_sub_events["main"]:
+            self.draw_redirect()
+            return
+        
+        self.text_surface.draw()
+        self.overlay_background.draw()
+        if self.auth_sub_events["sign_in"]:
+            self.draw_sign_in()
+        elif self.auth_sub_events["sign_up"]:
+            self.draw_sign_up()
+            
+        if self.auth_sub_events["security_overlay"]:
+            self.draw_security_overlay()
+        return
