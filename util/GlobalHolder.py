@@ -6,20 +6,23 @@ from pathlib import Path
 
 from .DataBase.Database import MasterDatabase
 from util.CursorManager import CursorManager
-
+from util.Game.Player import Player, UserInfo
 
 class GlobalHolder:
+    FPS: int | None = 60
     running: bool = True  # This is used to check if the game is running or not, this is used to stop the game when the user closes the window
     screen_manager: ScreenManager = ScreenManager(icon_path=images["game_icon_64_64"])  # This is the main screen manager that holds the methods created by the Screen Manager Class
     cursor_manager: CursorManager = CursorManager()
-    event_manager: EventListenerManager = EventListenerManager()# This is the main event manager that holds the methods created by the Event Listener Manager Class
     music_manager: MusicManager = MusicManager()  # This is the main music manager that loads, loops, and controls music and sfx volume
+    event_manager: EventListenerManager = EventListenerManager(music_manager=music_manager)# This is the main event manager that holds the methods created by the Event Listener Manager Class
     font_manager: FontManager = FontManager()
     loaded_images: dict[str, Surface] = {} # Used to store raw images
 
-    db: MasterDatabase = MasterDatabase()
+    db: MasterDatabase = MasterDatabase() # This is the main database manager that holds the methods created by the Database Class
 
     scale: float = 1.00
+
+    player: Player = Player(uid="", username="", user_info=UserInfo(xp=0, level=1, active_deck_uid="", deck_list_uid=[]), user_decks=[]) # This is the main player object that holds the methods created by the Player Class
 
     # Undocumented
     def determine_scale(self) -> None:

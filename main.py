@@ -1,3 +1,6 @@
+from pygame.time import Clock
+
+
 import pygame # Importing the pygame module from the pygame library, to use its functions and classes for creating games
 _ = pygame.init() # Initializing all imported pygame modules, which is necessary before using any other pygame functions
 
@@ -7,28 +10,60 @@ clock = pygame.time.Clock()
 from pages.BasePage import BasePage
 from pages.MainMenu import MainMenu
 from pages.Auth     import Auth
-
-from .CustomTypes import PageType
+from pages.Deck     import DeckPage as Deck
+from pages.Battle   import BattlePage
+from pages.TestPage import TestPage
+from CustomTypes import PageType
 
 class GameManager():
-    current_page: "BasePage"  # This holds the current page that is being displayed on the screen.
+    # Tracks the active page instance currently being displayed and updated.
+    current_page: "BasePage" 
 
+    # Maps each page name to its corresponding class so the game can switch pages.
     pages_map: dict[PageType, type[BasePage]] = {
+        "global": BasePage,
         "authenticate": Auth,
-        "main_menu": MainMenu
+        "main_menu": MainMenu,
+        "deck_menu": Deck,
+        "battle": BattlePage,
+        "test": TestPage
     }
 
     def __init__(self) -> None:
-        self.current_page = Auth() # This is used to create a new instance of the BasePage Class, which is used to display the main menu of the game.
-
+        # Start on the battle page when the game manager is created.
+        self.current_page = MainMenu() 
+        # Begin the main game loop immediately.
         self.run()
-        pass
 
-    def run(self) -> None: # This is used to run the game, and is called every frame. This is called by the main.py file to run the game.
-        while self.current_page.running: # This is used to check if the game is running or not, this is used to stop the game when the user closes the window
+    def run(self) -> None: 
+        # Controls whether the whole game loop should keep running.
+        app_running = True
+        # Keeps track of the page that was previously active.
+        current_page: PageType = self.current_page.current_page
 
-            self.current_page.run() # This is used to run the current page, and is called every frame. This is called by the GameManager Class to run the page.
+        while app_running:
+            # 1. Run the current page loop (blocks here until the page's running flag is False)
+            self.current_page.run() 
+            
+            # 2. Check which page the current page wants to switch to.
+            # Each page stores its next target in current_page.
+            temp_page: PageType = self.current_page.current_page
+            
+            # 3. If the target page is different from the current one, create and switch to it.
+            if temp_page != current_page:
+                print(f"Switching to page: {temp_page}")
+                self.current_page = self.pages_map[temp_page]()
+                current_page = temp_page
 
+            # Stop the game loop if the current page is no longer running.
+            if not self.current_page.running: app_running = False
+
+            # Limit the frame rate for the active page if it has an FPS value.
+            if self.current_page.FPS:
+                _ = clock.tick(self.current_page.FPS)
+                
+        # Clean up pygame resources once the loop finishes.
+        pygame.quit()
 
 if __name__ == "__main__":
     game_manager = GameManager() # This is used to create a new instance of the GameManager Class, which is used to run the game.

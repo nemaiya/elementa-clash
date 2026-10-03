@@ -1,5 +1,5 @@
 from pygame.surface import Surface
-from typing import Literal, TypeAlias
+from typing import Callable, Literal, TypeAlias
 import pygame
 
 from components.Image import BackgroundImageComponent, ImageComponent, TextImageComponent, TextOption
@@ -7,8 +7,12 @@ from components.Slider import Slider
 from util import EventListenerInputRule
 from CustomTypes import PageType
 from util.GlobalHolder import GlobalHolder
+from util.AssetManager import fonts, images
 
 from components import Button, DropDown, ImageOption
+
+FpsOption: TypeAlias = Literal["30", "60", "90", "120", "Uncapped"]
+
 
 
 SubEvents: TypeAlias = Literal["quit_confirmation", "setting_menu"]
@@ -18,16 +22,27 @@ class BasePage(GlobalHolder):
         #self.background_image_key: str = "background_image1"
         self.current_page: PageType = "global"  # This is used to hold the current page that is being displayed on the screen, this is used to check if the page is being displayed or not
 
+        self.next_page: PageType |  None = None
         self.sub_events: dict[SubEvents, bool] = {
             "quit_confirmation": False,
             "setting_menu": False
         }
 
         self.screen_manager.set_caption(caption="Base Page")
-        
+
+        # A previous setting dict to store the settings before the change
+        self.previous_setting: dict[str, float | int | str] = {"music_vol": 0.7, "sfx_vol": 0.7, "fps": "60", "font": "poppins"}
+        # A current setting dict to store the current setting 
+        self.current_setting: dict[str, float | int | str] = self.previous_setting.copy()
+        # A flag to show whether the settings has changed or not
+        self.setting_changed: bool= False
+
+        self.load_saved_settings()
+
         self.init()  # This is used to initialise the page components (e.g buttons, labels, textboxes, etc.), and is called when the page is created.
         self.update_layout()
         self.add_events()  # This is used to add the events to the event manager, and is called when the page is created.
+
         pass
 
 
@@ -37,8 +52,60 @@ class BasePage(GlobalHolder):
         # old code: self.background_image = BackgroundImageComponent(image_option=image_key, base_pos=(0,0))
         self.background_image = BackgroundImageComponent(image_option=image_key, base_pos=self.screen_manager.center_points, anchor="center")
         self.background_image.update_layout()
-        
     
+    def settings_change(self, key: str, value: float | str) -> None:
+        # Mark the settings as changed when user modifies the setting
+        if not self.setting_changed:
+            self.setting_changed = True
+
+            # Display the controls for saving or discarding the changes.
+            self.change_save_setting_button_ui()
+
+        # Keep the latest value so it can be saved or reverted later.
+        self.current_setting[key] = value
+        pass
+
+    def change_volume(self, value: float) -> None:
+        # The settings_change method is called to update the current setting and mark that a change has occurred.
+        self.settings_change(key="music_vol", value=value)
+        # The music is set in the music_manager to the new volume level
+        self.music_manager.set_music_volume(volume=value)
+    
+    def change_sfx(self, value: float) -> None:
+        # The settings_change method is called to update the current setting and mark that a change has occurred.
+        self.settings_change(key="sfx_vol", value=value)
+        # The sfx is set in the music_manager to the new volume level
+        self.music_manager.set_sfx_volume(volume=value)
+    
+    def change_fps(self, value: str) -> None:
+        # Checks if the setting is being changed and the current setting is updated
+        self.settings_change(key="fps", value=value)
+        # The fps is normalised into numbers or None if uncapped
+        fps: int | None = None if value == "Uncapped" else int(value)
+        # The fps is updated in the GlobalHolder class
+        GlobalHolder.FPS = fps
+    
+    def change_font(self, value: str) -> None:
+        # The font is changed in the current setting and the settings are marked as changed
+        self.settings_change(key="font", value=value)
+        # The font is changed in the font manager and the layout is updated to reflect the new font
+        self.font_manager.set_font(font_key=value)
+        # The layout of the components is updated to reflect the new font
+        self.update_layout()
+
+    def change_save_setting_button_ui(self) -> None:
+        # Make the text color of the save button white if there are unsaved changes, otherwise make it gray to indicate that there are no unsaved changes.
+        if self.setting_changed: self.save_setting_changes_button.text_surface.text_option.set_color(color=(255, 255,255))
+        else: self.save_setting_changes_button.text_surface.text_option.set_color(color=(166,166,166))
+
+        self.save_setting_changes_button.update_layout()
+    
+    def save_setting_changes(self) -> None:
+        # Mark the current settings as saved.
+        self.setting_changed = False
+        # Refresh the save button to show that there are no unsaved changes.
+        self.change_save_setting_button_ui()
+
 
     def init(self) -> None:  # This is used to initialise the page components (e.g buttons, labels, text boxes, etc.), and is called when the page is created.
         # self.background_image: Surface = self.load(image_key=self.background_image_key)
@@ -54,7 +121,7 @@ class BasePage(GlobalHolder):
         self.quit_game_overlay: ImageComponent = ImageComponent(image_option="confirmation_overlay", base_pos=(480, 243), anchor="center")
 
         # Overlay text
-        self.overlay_quit_game_text: TextImageComponent = TextImageComponent(text_option=TextOption(text="Are you sure you wish to close the game?", size=24), base_pos=(self.quit_game_overlay.rect.centerx, int(self.quit_game_overlay.rect.centery * 0.7)), anchor="center")
+        self.overlay_quit_game_text: TextImageComponent = TextImageComponent(text_option=TextOption(text="Are you sure you wish to close the game?", size=24, max_width=int(self.quit_game_overlay.rect.width * 0.9), align="center"), base_pos=(self.quit_game_overlay.rect.centerx, int(self.quit_game_overlay.rect.centery * 0.7)), anchor="center")
 
         # Overlay Buttons
         # Creates a Button for confirm quit Game
@@ -86,17 +153,30 @@ class BasePage(GlobalHolder):
         # Setting Components
         self.volume_button: Button = Button(image_option=ImageOption(colored_image=( (82 , 100, 121) , (235, 50 ) ), round_edges=15), text_option=TextOption(text="Audio", size=25, color=(244, 239, 235)), position=(70, 90))
         # Initialise the slider for the volume
-        self.volume_slider: Slider = Slider(track_option=ImageOption(colored_image=( (180, 180, 180) , (410, 18 ) ), round_edges= 9), knob_option=ImageOption(colored_image=( (0,0,0), (35, 35) ), shape="circle" ),position=(690, 115), anchor="center", value=self.music_manager.music_volume, key_increase=pygame.K_RIGHT, key_decrease=pygame.K_LEFT)
+        self.volume_slider: Slider = Slider(track_option=ImageOption(colored_image=( (180, 180, 180) , (410, 18 ) ), round_edges= 9), knob_option=ImageOption(colored_image=( (0,0,0), (35, 35) ), shape="circle" ),position=(690, 115), anchor="center", value=float(self.current_setting["music_vol"]), key_increase=pygame.K_RIGHT, key_decrease=pygame.K_LEFT)
 
         # Initialise the sfx button
         self.sfx_button: Button = Button(image_option=ImageOption(colored_image=( (82 , 100, 121) , (235, 50 ) ), round_edges=15), text_option=TextOption(text="Sfx", size=25, color=(244, 239, 235)), position=(70, 150))
 
         # Then initlaise the slider 
-        self.sfx_slider: Slider = Slider(track_option=ImageOption(colored_image=( (180, 180, 180) , (410, 18 ) ), round_edges= 9), knob_option=ImageOption(colored_image=( (0,0,0), (35, 35) ), shape="circle" ),position=(690, 175), anchor="center", value=self.music_manager.sfx_volume, key_increase=pygame.K_UP, key_decrease=pygame.K_DOWN)
+        self.sfx_slider: Slider = Slider(track_option=ImageOption(colored_image=( (180, 180, 180) , (410, 18 ) ), round_edges= 9), knob_option=ImageOption(colored_image=( (0,0,0), (35, 35) ), shape="circle" ),position=(690, 175), anchor="center", value=float(self.current_setting["sfx_vol"]), key_increase=pygame.K_UP, key_decrease=pygame.K_DOWN)
         
         # Now start with the drop down fps changer button
         self.fps_button: Button =  Button(image_option=ImageOption(image=self.load_image(image_key="button2")), text_option=TextOption(text="Change FPS   ", size=23, color=(244, 239, 235)), position=(70, 240))
-        self.fps_dropdown: DropDown = DropDown(items= ["30", "60", "90", "120", "Uncapped"], dropdown_surface=ImageComponent(image_option=self.load_image(image_key="dropdown_icon"), base_pos=(self.fps_button.surface.rect.x + int(self.fps_button.surface.rect.w * 0.89), 265), anchor="center"), item_sizes=(100, 20), menu_position=(self.fps_button.surface.rect.x + self.fps_button.surface.rect.width, self.fps_button.surface.rect.y + self.fps_button.surface.rect.height), menu_anchor="topright")
+
+        # The drop down menu is created with the the items 
+        self.fps_dropdown: DropDown = DropDown(items= ["30", "60", "90", "120", "Uncapped"], default_item=str(self.current_setting.get("fps")), dropdown_surface=ImageComponent(image_option=self.load_image(image_key="dropdown_icon"), base_pos=(self.fps_button.surface.rect.x + int(self.fps_button.surface.rect.w * 0.89), 265), anchor="center"), item_sizes=(100, 20), menu_position=(self.fps_button.surface.rect.x + self.fps_button.surface.rect.width, self.fps_button.surface.rect.y + self.fps_button.surface.rect.height), menu_anchor="topright")
+        
+        # The font button is created
+        self.font_button: Button = Button(image_option=ImageOption(image=self.load_image(image_key="button2")), text_option=TextOption(text="Change Font   ", size=23, color=(244, 239, 235)), position=(400, 240))
+        
+        # The drop down for the font is also created 
+        self.font_dropdown: DropDown = DropDown(items=[font for font in fonts.keys()], dropdown_surface=ImageComponent(image_option=self.load_image(image_key="dropdown_icon"), base_pos=(self.font_button.surface.rect.x + int(self.font_button.surface.rect.w * 0.89), 265), anchor="center"), item_sizes=(150, 20), menu_position=(self.font_button.surface.rect.x + self.font_button.surface.rect.width, self.font_button.surface.rect.y + self.font_button.surface.rect.height), menu_anchor="topright", default_item=str(self.current_setting["font"]))
+
+        # The save setting changes button is created, which will be used to save the changes made in the setting menu
+        self.save_setting_changes_button: Button = Button(image_option=ImageOption(colored_image=( (82 , 100, 121) , (235, 50 ) ), round_edges=15), text_option=TextOption(text="Save Changes", color=(166, 166, 166), size=23), position=(940, 461), anchor="topright")
+        self.default_settings: Button = Button(image_option=ImageOption(colored_image=( (82 , 100, 121) , (235, 50 ) ), round_edges=15), text_option=TextOption(text="Default Settings", color=(166, 166, 166), size=23), position=(20, 461))
+        self.default_settings.on_activate = lambda: self.apply_default_settings()
         pass
 
     def draw_setting_menu(self) -> None:
@@ -113,6 +193,12 @@ class BasePage(GlobalHolder):
             # Draw the fps changing components
             self.fps_button.draw()
             self.fps_dropdown.draw()
+            # Draw the font changing components
+            self.font_button.draw()
+            self.font_dropdown.draw()
+            # Draw the save setting changes button
+            self.save_setting_changes_button.draw()
+            #self.default_settings.draw()
         self.setting_menu_button.draw()
         return
 
@@ -140,13 +226,14 @@ class BasePage(GlobalHolder):
         # Old Code: _ = self.screen_manager.blit(source=self.background_image, dest=self.background_image.get_rect(center=self.screen_manager.center_points))
         self.background_image.draw()
 
-        # Handle the sub events in a order, where the least priority one is drawn first and the most important priority one is handled last
-        if self.sub_events["quit_confirmation"]:
-            self.draw_quit_confirm()
         
         self.draw()
 
         self.draw_setting_menu()
+
+        # Handle the sub events in a order, where the least priority one is drawn first and the most important priority one is handled last
+        if self.sub_events["quit_confirmation"]:
+            self.draw_quit_confirm()
         return
 
 
@@ -184,7 +271,16 @@ class BasePage(GlobalHolder):
         self.sfx_slider.update_layout()
         # Update the UI components of the fps changing.
         self.fps_button.update_layout()
+        # Update the layout of the components in the fps drop down (& menu)
         self.fps_dropdown.update_layout()
+
+        # Update the layout of the font button
+        self.font_button.update_layout()#
+        # Update the layout of the components in the font drop down (& menu)
+        self.font_dropdown.update_layout()
+        # Update the layout of the setting save button
+        self.save_setting_changes_button.update_layout()
+        self.default_settings.update_layout()
         pass
 
 
@@ -232,10 +328,25 @@ class BasePage(GlobalHolder):
         # Add event listeners for the settings
         def toggle_setting_menu() -> None:
             if self.sub_events.get("setting_menu", False):
-                print("Close Setting Menu")
+                if self.setting_changed:
+                    # Revert the settings to the previous values if the user cancels the changes
+                    self.volume_slider.set_value(value=float(self.previous_setting["music_vol"]))
+                    self.sfx_slider.set_value(value=float(self.previous_setting["sfx_vol"]))
+                    self.fps_dropdown.select_item(index=self.fps_dropdown._labels.index(str(self.previous_setting["fps"])))
+                    self.font_dropdown.select_item(index=self.font_dropdown._labels.index(str(self.previous_setting["font"])))
+
+                    self.setting_changed = False
+
+                    self.change_save_setting_button_ui()
+                    self.update_layout()
                 self.sub_events["setting_menu"] = False
             else:
-                print("Open Setting Menu")
+                # When the setting menu is opened, the current settings are stored in the previous_setting dictionary to allow for reverting changes if needed.
+                self.previous_setting["music_vol"] = self.volume_slider.value
+                self.previous_setting["sfx_vol"] = self.sfx_slider.value
+                self.previous_setting["font"] = self.font_manager._font_key or "Poppins"
+                self.previous_setting["fps"] = self.fps_dropdown.selected_item or "60"
+                print(f"When settings opened {self.previous_setting}")
                 self.sub_events["setting_menu"] = True
 
 
@@ -244,17 +355,30 @@ class BasePage(GlobalHolder):
 
         # Change the volume as the slider moves
         #self.volume_slider.on_change = self.music_manager.set_music_volume(volume=self.volume_slider.value)
-        self.volume_slider.on_change = lambda: self.music_manager.set_music_volume(volume=self.volume_slider.value)
+        self.volume_slider.on_change = lambda: self.change_volume(value=self.volume_slider.value)
         # Add all the events for the volume slider
-        self.volume_slider.add_event_listeners(page_state="global", condition=lambda: self.sub_events.get("setting_menu", False))
+        self.volume_slider.add_event_listeners(page_state="global", condition=lambda: self.sub_events.get("setting_menu", False) )
 
         # When the value of the slider changes the sfx volume is adjusted instantly
-        self.sfx_slider.on_change = lambda: self.music_manager.set_sfx_volume(volume=self.sfx_slider.value)
-        self.sfx_slider.add_event_listeners(page_state="global", condition=lambda: self.sub_events.get("setting_menu", False))
+        self.sfx_slider.on_change = lambda: self.change_sfx(value=self.sfx_slider.value)
+        self.sfx_slider.add_event_listeners(page_state="global", condition=lambda: self.sub_events.get("setting_menu", False) )
 
+        
+        
         self.event_manager.add_event_listener(page_state="global", event_rule=EventListenerInputRule(action=self.mute, keys=[(pygame.K_m, "released")]))
 
-        self.fps_dropdown.add_event_listeners(page_state="global", condition=lambda: self.sub_events.get("setting_menu", False))
+        # Add the on change callback for the fps drop down
+        self.fps_dropdown.on_change = lambda: self.change_fps(value=self.fps_dropdown.selected_item) # pyright: ignore
+        # Add all the events from the drop down to the event listener manager
+        self.fps_dropdown.add_event_listeners(page_state="global", condition=lambda: self.sub_events.get("setting_menu", False) )
+        # The callback function for the font drop down is added, so when the player changes the font the font of the UI is changed
+        self.font_dropdown.on_change = lambda: self.change_font(value=self.font_dropdown.selected_item) # pyright: ignore
+        # All the events listeners for the font dropdown is added to the event listener manager
+        self.font_dropdown.add_event_listeners(page_state="global", condition=lambda: self.sub_events.get("setting_menu", False) )
+
+        self.save_setting_changes_button.on_activate = lambda: self.save_setting_changes()
+        self.save_setting_changes_button.add_event_listeners(page_state="global", condition=lambda: self.sub_events.get("setting_menu", False) and self.setting_changed)
+        self.default_settings.add_event_listeners(page_state="global", condition=lambda: self.sub_events.get("setting_menu", False))
         return
 
     def handle_event(self) -> None:  # This is used to handle events (e.g button clicks, text input, etc.), and is called every frame.
@@ -295,5 +419,46 @@ class BasePage(GlobalHolder):
         # Updates the layout of the whole page, so it matches with the current size of the display.
         self.update_layout()
 
+    def apply_default_settings(self) -> None:
+        #self.change_sfx(value=0.7)
+        #self.change_fps(value="60")
+        #self.change_font(value="Poppins")
+        # 
+        self.volume_slider.set_value(value=0.7)
+        self.sfx_slider.set_value(value=0.7)
+        self.font_dropdown.select_item(index=self.font_dropdown._labels.index("Poppins"))
+        self.fps_dropdown.select_item(index=self.fps_dropdown._labels.index("60"))
+
+    def load_saved_settings(self) -> None:
+        # Fetch settings from your DB. (Assumes this returns a dictionary or similar key-value mapping)
+        saved_data = self.db.get_settings() 
+        if not saved_data: saved_data = {}
+        
+        # # Update the current_setting dictionaries
+        self.current_setting["music_vol"] = saved_data.get("music_vol", 0.7)
+        self.current_setting["sfx_vol"] = saved_data.get("sfx_vol", 0.7)
+        self.current_setting["fps"] = saved_data.get("fps", "60")
+        self.current_setting["font"] = saved_data.get("font", "Poppins")
+        self.previous_setting = self.current_setting.copy()
+
+        # Make changes to the specifed classes itself that handles the corresponding settings
+        self.music_manager.set_music_volume(volume=float(self.current_setting["music_vol"]))
+        self.music_manager.set_sfx_volume(volume=float(self.current_setting["sfx_vol"]))
+        
+        fps_val = str(self.current_setting["fps"])
+        GlobalHolder.FPS = None if fps_val == "Uncapped" else int(fps_val)
+        
+        self.font_manager.set_font(font_key=str(self.current_setting["font"]))
+        #self.change_save_setting_ui()
+
     def quit_game(self) -> None:
+        # Save the confirmed settings to the local database before shutting down
+        self.db.save_settings(
+            music_vol=float(self.current_setting["music_vol"]),
+            sfx_vol=float(self.current_setting["sfx_vol"]),
+            fps=str(self.current_setting["fps"]),
+            font=str(self.current_setting["font"])
+        )
+        
+        # After save set the running flag to False to exit the main loop and close the game
         GlobalHolder.running = False

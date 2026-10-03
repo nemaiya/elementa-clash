@@ -41,11 +41,14 @@ class MainMenu(BasePage):
         super().add_events()
 
         # Added event listeners for all buttons, not just play_button
-        self.play_online_button.add_event_listeners(page_state=self.current_page)
-        self.play_button.add_event_listeners(page_state=self.current_page)
-        self.deck_setup_button.add_event_listeners(page_state=self.current_page)
-        self.leaderboard_button.add_event_listeners(page_state=self.current_page)
-        self.tutorial_button.add_event_listeners(page_state=self.current_page)
+        condition= lambda: not (self.sub_events["quit_confirmation"] or self.sub_events["setting_menu"])
+        self.play_online_button.add_event_listeners(page_state="main_menu", condition=condition)
+        self.play_button.add_event_listeners(page_state="main_menu", condition=condition)
+
+        self.deck_setup_button.on_activate = lambda: self.change_page(new_state="deck_menu")
+        self.deck_setup_button.add_event_listeners(page_state="main_menu", condition=condition)
+        self.leaderboard_button.add_event_listeners(page_state="main_menu", condition=condition)
+        self.tutorial_button.add_event_listeners(page_state="main_menu", condition=condition)
         return
 
     @override

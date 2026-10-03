@@ -1,7 +1,7 @@
 #from pygame.cursors import Cursor
 
 
-from typing import Callable
+from typing import Callable, override
 
 from CustomTypes import ActionFunction, ConditionalFunction, GetRectFunction, PageType, KeyState, MouseAction
 from pygame import Rect, Event
@@ -35,6 +35,21 @@ class EventListenerInputRule():
         # Used to check the condition required for this rule to run
         self.condition: ConditionalFunction | None = condition
 
+    @override
+    def __eq__(self, other: object) -> bool:
+        if not isinstance(other, EventListenerInputRule):
+            return False
+        
+        # A rule is a duplicate if all its trigger conditions are identical.
+        # We purposely ignore self.action here because callables change memory addresses.
+        return (
+            self.keys == other.keys and
+            self.mouse_action == other.mouse_action and
+            self.py_event == other.py_event and
+            self.hover_rect == other.hover_rect and 
+            self.action == other.action
+        )
+
 
 class EventListenerManager():
     event_listeners: dict[PageType, list[EventListenerInputRule]] = {} # This is a dictionary that holds the event listeners for each page state, where the key is the page state and the value is a list of event listener input rules that will be triggered when the event is triggered on that page state.
@@ -44,7 +59,7 @@ class EventListenerManager():
     hashed_events: set[int] = set[int]()
     BLOCKED_KEY_PRESSES_WHILST_TYPING: list[int] = [pygame.K_a + i for i in range(26)] + [pygame.K_0 + i for i in range(10)]
     
-    def __init__(self) -> None:
+    def __init__(self, music_manager: MusicManager) -> None:
         self._tracked_keys: set[int] = set[int]() # This is a set that holds the keys that are being tracked for the event listeners, this is used to check if the key is being held down or not
         self.current_keys: pygame.key.ScancodeWrapper | None = None # This is the current state of the keys
         self.previous_keys: pygame.key.ScancodeWrapper | None = None # This is the previous state of the keys
@@ -56,6 +71,7 @@ class EventListenerManager():
         # Holds the mouse state from the previous frame
         self.previous_mouse: tuple[bool, bool, bool] = (False, False, False)
 
+        self.music_manager: MusicManager =  music_manager
         # This is used to track what button was mouse was at previous frame
         self.button_tracker: int | None = None
         #self.events: list[Event] = []
@@ -66,8 +82,7 @@ class EventListenerManager():
         if page_state not in self.event_listeners: # This is used to check if the page state is already in the event listener dict, if its not then it will create a new list for that page so that it doesn't run into an error and can then be safely be added 
             self.event_listeners[page_state] = []
         
-        hashed_event = hash((event_rule, page_state))
-        if hashed_event in self.hashed_events:
+        if event_rule in self.event_listeners[page_state]:
             print("Already added skip")
             return
         
@@ -135,7 +150,7 @@ class EventListenerManager():
                         continue
                     # Check if the key is in the current keys and if it is then check the state of the key and call the action function of the event rule
                     if state == "pressed" and (self.current_keys and self.current_keys[key]) and (self.previous_keys is None or not self.previous_keys[key]):
-                        MusicManager.play_sfx(sfx_key="keypress_click1")
+                        self.music_manager.play_sfx(sfx_key="keypress_click1")
                         print(f"Key Pressed: {pygame.key.name(key)}")
                         event_rule.action()
                         break
@@ -149,7 +164,7 @@ class EventListenerManager():
                     # Check if the key is released and if it is then call the action function of the event rule
                     elif state == "released" and (self.previous_keys is not None and self.previous_keys[key]) and (self.current_keys is None or not self.current_keys[key]):
                         #print(f"Key Released: {pygame.key.name(key)}")
-                        MusicManager.play_sfx(sfx_key="keypress_click1")
+                        self.music_manager.play_sfx(sfx_key="keypress_click1")
                         event_rule.action()
                         break
             
@@ -167,26 +182,26 @@ class EventListenerManager():
 
                     # entered: When the mouse first visits the rect
                     if event_rule.mouse_action == "enter" and mouse_over and unique_id != self.button_tracker:
-                        print(f"Entered a new button with id {unique_id}")
+                        #print(f"Entered a new button with {unique_id} current page {current_page}")
                         CursorManager.set_hand_cursor()
                         self.button_tracker = unique_id
                         event_rule.action()
 
                     # exit: When the mouse is no longer over the rect, and the unique id matches with the button_tracker
                     if event_rule.mouse_action == "exit" and not mouse_over and (self.button_tracker == unique_id):
-                        print(f"Moved away from the button with id {unique_id}")
+                        #print(f"Moved away from the button with id {unique_id}")
                         CursorManager.set_pointer_cursor()
                         self.button_tracker = None
                         event_rule.action()
 
                     # clicked: When the button was not pressed last frame but is pressed this frame over the rect
                     if event_rule.mouse_action == "clicked" and mouse_over and self.current_mouse[0] and not self.previous_mouse[0]:
-                        MusicManager.play_sfx(sfx_key="mouse_click2")
+                        self.music_manager.play_sfx(sfx_key="mouse_click2")
                         event_rule.action()
 
                     if event_rule.mouse_action == "unclick" and not mouse_over and self.current_mouse[0] and not self.previous_mouse[0]:
-                        #MusicManager.play_sfx(sfx_key="mouse_click2")
-                        print("Unclick ")
+                        self.music_manager.play_sfx(sfx_key="mouse_click2")
+                        #print("Unclick ")
                         event_rule.action()
 
                 # holding: The left mouse button has stayed down since the previous frame

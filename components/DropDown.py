@@ -14,7 +14,7 @@ from CustomTypes import ActionFunction, ConditionalFunction, PageType
 
 class DropDown(GlobalHolder):
     def __init__(self, items: list[str], dropdown_surface: ImageComponent, item_sizes: tuple[int, int], menu_position: tuple[int, int], menu_anchor: Anchor = "topleft",
-        item_spacing: int = 4, item_image: Surface | None = None, item_selected_image: Surface | None = None, item_color: ColorLike = (230, 235, 240), item_selected_color: ColorLike = (160, 170, 180)  ) -> None:
+        item_spacing: int = 4, item_image: Surface | None = None, item_selected_image: Surface | None = None, item_color: ColorLike = (230, 235, 240), item_selected_color: ColorLike = (160, 170, 180), default_item: str | None = None) -> None:
         
         # Store the information to an attribute
         self._labels: list[str] = list[str](items)
@@ -41,8 +41,11 @@ class DropDown(GlobalHolder):
         
         # Track whether the options menu is visible and which item is selected.
         self.is_open: bool = False
-        self.selected_index: int | None = None
-        self.selected_item: str | None = None
+        # Initialise both values from the requested default item.
+
+        self.selected_index: int | None = self._labels.index(default_item) if default_item in self._labels else None
+        
+        self.selected_item: str | None = self._labels[self.selected_index] if self.selected_index else None
 
         # Callback function, whenever the selected item changes.
         self.on_change: ActionFunction = lambda: print(f"The dropdown selected '{self.selected_item}'")
@@ -73,9 +76,11 @@ class DropDown(GlobalHolder):
             item_position: tuple[int, int] = (self._menu_position[0], self._menu_position[1] + y_offset)
             
             # Apply base image or fallback color
-
-            item_button: Button = Button(image_option=ImageOption(image=self._item_image), text_option=TextOption(text=label, size=10, color=(70, 80, 95)), position=item_position, anchor=self._menu_anchor, outline_thickness=2)
-            item_button.on_activate = self._make_select_action(index=i)
+            if i == self.selected_index:
+                item_button: Button = Button(image_option=ImageOption(image=self._item_selected_image), text_option=TextOption(text=label, size=10, color=(70, 80, 95)), position=item_position, anchor=self._menu_anchor, outline_thickness=2)
+            else:
+                item_button = Button(image_option=ImageOption(image=self._item_image), text_option=TextOption(text=label, size=10, color=(70, 80, 95)), position=item_position, anchor=self._menu_anchor, outline_thickness=2)
+            #item_button.on_activate = self.make_select_action(index=i)
             self.items.append(item_button)
         
         # Use the first and last item rectangles to determine the full menu length and width.
@@ -84,12 +89,6 @@ class DropDown(GlobalHolder):
         #menu_bg_rect = Rect(first_rect.x, first_rect.y, first_rect.width * 1.02, (last_rect.bottom - first_rect.top)*1.02)
         # Centre the background around all items and add a small padding margin.
         self.dropdown_background_surface = ImageComponent(image_option=ImageOption(colored_image=( (255, 255, 255) , (int(first_rect.width * 1.1), int((last_rect.bottom - first_rect.top)*1.1) )), round_edges=5 ).raw_image, base_pos=(first_rect.centerx, (first_rect.top + last_rect.bottom) // 2), anchor="center")
-        
-
-    def _make_select_action(self, index: int) -> ActionFunction:
-        def select_item() -> None:
-            self.select_item(index=index)
-        return select_item
 
     def _focus_on_dropdown(self) -> None: self.focus_on_dropdown = True
     
@@ -105,56 +104,82 @@ class DropDown(GlobalHolder):
             self.open_menu()
     
     def change_dropdown(self) -> None:
+        # Hold the current surface in a temporary variable
         temp: Surface = self.dropdown_surface._raw_image
+        # Then swap with the alternative dropdown so show the change
         self.dropdown_surface._raw_image = self.temp_dropdown_surface
+        # Then set the temp_dropdown_surface to the temp
         self.temp_dropdown_surface = temp
         self.update_layout()
 
     def open_menu(self) -> None:
         self.is_open = True
+        # Run the change dropdown so the drop down rotates 180 degress
         self.change_dropdown()
 
     def close(self) -> None:
+        # Mark the menu as hidden
         self.is_open = False
+        # Run the change dropdown so it restores its original image
         self.change_dropdown()
+
+        # Remove focus from every option so no item remains highlighted.
         for item_button in self.items:
             item_button.disable_focus()
 
-    def select_item(self, index: int) -> None:
+    def select_item(self, index: int, call_change: bool = True) -> None:
+        # Check the edge case if the selected items falls within the range and deck list.
         if index < 0 or index >= len(self._labels):
             return
 
+        # Store the chosen item index and item
         self.selected_index = index
         self.selected_item = self._labels[index]
-        
-        # Swap images/colors to highlight the active selection
+
+        print(f"selected index {self.selected_index} and item {self.selected_item}")
+
+        # Swap images/colors to highlight the active selection.
+        # These are the standard and highlighted button visuals used in the menu.
         assert self._item_image is not None
         assert self._item_selected_image is not None
         item_image: Surface = self._item_image
         selected_image: Surface = self._item_selected_image
 
+        # Update each option button to match the current selection state.
         for i, item_button in enumerate[Button](self.items):
             if i == self.selected_index:
                 item_button.surface._raw_image = selected_image
             else:
                 item_button.surface._raw_image = item_image
-        
-        self.change_dropdown()
-        #self.update_layout()
+
+        # Briefly animate the dropdown trigger and then close the menu.
         self.close()
-        self.on_change()
+        if call_change:
+            self.change_dropdown()
+            self.on_change()
+        else: 
+            self.update_layout()
 
     def add_event_listeners(self, page_state: PageType, condition: ConditionalFunction | None = None) -> None:
+        # Track whether the mouse is over the dropdown component
         self.event_manager.add_event_listener(page_state=page_state, event_rule=EventListenerInputRule(action=self._focus_on_dropdown, hover_rect=self.dropdown_surface.rect, mouse_action="enter", condition=condition))
         self.event_manager.add_event_listener(page_state=page_state, event_rule=EventListenerInputRule(action=self._unfocus_on_dropdown, hover_rect=self.dropdown_surface.rect, mouse_action="exit", condition=condition))
+
+        # Clicking the dropdown trigger enables the menu visibility.
         self.event_manager.add_event_listener(page_state=page_state, event_rule=EventListenerInputRule(action=self.toggle, hover_rect=lambda: self.dropdown_surface.rect, mouse_action="clicked", condition=condition))
 
-        for item_button in self.items:
+        # Bind each item to call select itself when activated, but only while the menu is open.
+        for i, item_button in enumerate[Button](self.items):
+            item_button.on_activate = lambda i=i: self.select_item(index=i)
             item_button.add_event_listeners(page_state=page_state, condition=lambda: self.is_open and (condition() if condition is not None else True))
 
+
     def update_layout(self) -> None:
+        # Update the drop down surface to match the UI
         self.dropdown_surface.update_layout()
+        # Update the drop down menu background image
         self.dropdown_background_surface.update_layout()
+        # Finally update all the items in the drop down
         for item_button in self.items:
             item_button.update_layout()
 

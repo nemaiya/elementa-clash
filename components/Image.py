@@ -40,6 +40,11 @@ class ImageComponent():
     def cal_rect(self) -> None:
         self.rect: Rect = self.image.get_rect(**{self._anchor: self.position})
 
+    def update_position_only(self, new_scaled_pos: tuple[int, int]) -> None:
+        """Directly updates the scaled rect position without resizing the image (Best for dragging)."""
+        self.position = new_scaled_pos
+        self.rect.update(self.image.get_rect(**{self._anchor: self.position}))
+
 
     def update_layout(self) -> None:
         # Resizes the position

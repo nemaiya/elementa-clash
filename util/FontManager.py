@@ -29,7 +29,8 @@ class FontManager:
     def set_font(self, font_key: str) -> None:
         if font_key not in fonts:
             raise ValueError(f"Font '{font_key}' was not found in AssetManager.fonts")
-
+        
+        self._cached_fonts = {}
         self._font_key = font_key
 
     def render(
@@ -37,6 +38,7 @@ class FontManager:
         bold: bool = False, italic: bool = False, underline: bool = False, font_key: str | None = None,
     ) -> Surface:
         # Get the desired font from the built in method, which handles the retrieving process
+        if not font_key: font_key = self._font_key
         font: Font = self._get_font(size=size, bold=bold, italic=italic, underline=underline, font_key=font_key)
 
         # Wrap the input text to fit the requested width while preserving line breaks.

@@ -1,4 +1,5 @@
 from pathlib import Path
+from typing import ClassVar
 
 import pygame
 from pygame.mixer import Sound
@@ -9,7 +10,7 @@ from .AssetManager import music, sfx
 class MusicManager:
     music_volume: float = 0.70 # This is the default volume for music, 0.00-1.00
     sfx_volume: float = 0.70 # This is the default volume for sound effects, 0.00-1.00
-    _sfx_cache: dict[str, Sound] = {} # This stores loaded sound effects so they do not need to be loaded from disk each time
+    _sfx_cache: ClassVar[dict[str, Sound]] = {} # This stores loaded sound effects so they do not need to be loaded from disk each time
 
     def __init__(self) -> None:
         if not pygame.mixer.get_init(): # This checks whether the pygame mixer has already been initialised before using it
@@ -71,9 +72,11 @@ class MusicManager:
         for sound in self._sfx_cache.values(): # This updates every sound effect that has already been loaded
             sound.set_volume(self.sfx_volume) # This applies the new sound-effect volume to the cached sound
 
-    @staticmethod
-    def play_sfx(sfx_key: str) -> None:
-        sound: Sound | None = MusicManager._sfx_cache.get(sfx_key) # This checks whether the requested sound effect has already been loaded
+            print(f"Volume for sfx {sound.__hash__} is {sound.get_volume()}")
+
+    def play_sfx(self, sfx_key: str) -> None:
+        sound: Sound | None = self._sfx_cache.get(sfx_key) # This checks whether the requested sound effect has already been loaded
+        print("sound found " if sound else "sound not found")
 
         if sound is None: # This loads the sound effect only when it is not already cached
             sfx_path: Path | None = sfx.get(sfx_key) # This gets the file path associated with the requested sound-effect key
@@ -81,7 +84,9 @@ class MusicManager:
                 return
 
             sound = pygame.mixer.Sound(file=str(sfx_path)) # This loads the sound effect from its file path
-            MusicManager._sfx_cache[sfx_key] = sound # This caches the loaded sound effect for later use
+            self._sfx_cache[sfx_key] = sound # This caches the loaded sound effect for later use
 
-        sound.set_volume(MusicManager.sfx_volume) # This ensures the sound effect uses the current sound-effect volume
+        sound.set_volume(self.sfx_volume) # This ensures the sound effect uses the current sound-effect volume
+
+        print(f"SFX PLAYING WITH THE VOLUME {sound.get_volume()}")
         _ = sound.play() # This plays the requested sound effect

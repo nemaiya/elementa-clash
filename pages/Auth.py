@@ -15,8 +15,11 @@ class Auth(BasePage):
     @final
     def __init__(self) -> None:
         super().__init__()
+        # Change the current_page to 'authenticate' 
         self.change_page(new_state="authenticate")
+        # Add the subvent so that the page can be categorized into different sections
         self.auth_sub_events: dict[AuthSubEvents, bool] = {"main": True, "sign_in": False, "sign_up": False, "security_overlay": False}
+        # Keep the generated security code for the registration flow.
         self.security_code_value: int = 0
         #self.init()
 
@@ -24,9 +27,13 @@ class Auth(BasePage):
     def init(self) -> None:
         super().init()
 
+        # Change the background of the game
         self.init_background(image_key="background_image2") 
+        # Add the text_surface so it can guide them
         self.text_surface: TextImageComponent = TextImageComponent(text_option=TextOption(text="Welcome to Elementa Clash", size=36, bold=True, align="center", max_width=int(self.screen_manager.current_size[0] * 0.8)), base_pos=(480, 108), anchor="center") # pyright: ignore[reportUninitializedInstanceVariable]
+        # Sign In button redirects to the sign in part.
         self.sign_in_button: Button = Button(image_option=ImageOption(image=self.load_image(image_key="button1")), text_option=TextOption(text="Sign In", size=16), position=(480 , 270), anchor="center") # pyright: ignore[reportUninitializedInstanceVariable]
+        # Sign Up Button redirects to the sign up part.
         self.sign_up_button: Button = Button(image_option=ImageOption(image=self.load_image(image_key="button1")), text_option=TextOption(text="Sign Up", size=16), position=(480 , 324), anchor="center") # pyright: ignore[reportUninitializedInstanceVariable]
 
         self.overlay_background: ImageComponent = ImageComponent(image_option="confirmation_overlay", base_pos=(480, 324), anchor="center") # pyright: ignore[reportUninitializedInstanceVariable]
@@ -74,6 +81,7 @@ class Auth(BasePage):
         self.go_back_button: Button = Button(image_option=ImageOption(colored_image=((20,20,20), (20,20))), text_option=TextOption(text="", size=0), key=pygame.K_b, position=(690, 430) ) # pyright: ignore[reportUninitializedInstanceVariable]
         return
 
+    @final
     @override
     def update(self) -> None:
         super().update()
@@ -83,6 +91,8 @@ class Auth(BasePage):
         res: Response = self.db.response_queue.get_nowait()
         if res.action == "sign_in":
             if res.success:
+                print("Sign in")
+                self.next_page = "main_menu"
                 self.change_page(new_state="main_menu")
             else:
                 self.username_input.errors.append(res.message)
@@ -114,32 +124,40 @@ class Auth(BasePage):
         self.update_layout()
 
     def set_sign_in(self, clear: bool=False) -> None: 
+        # Set the sign_in section as true and disable all other auth sections.
         self.auth_sub_events["main"] = False
         self.auth_sub_events["sign_in"] = True
+
+
         self.auth_sub_events["sign_up"] = False
         self.auth_sub_events["security_overlay"] = False
 
+        # Update the page title for the sign-in screen.
         self.text_surface.text_option.set_text(text="Welcome Back Player")
         
-        # Reset positions for Sign In
+        # Reset the input positions to the standard sign-in layout.
         self.username_input.change_base_position((480, 274))
         self.password_input.change_base_position((480, 354))
         self.toggle_password.change_base_position((int(self.password_input.surface.rect.centerx + self.password_input.surface.rect.width * 0.6), 354))
 
+        # Clear any previously entered sign-in values when requested.
         if clear:
             self.username_input.text = ""
             self.username_input.text_surface.text_option.set_text("")
             self.password_input.text = ""
             self.password_input.text_surface.text_option.set_text("")
             
+        # Refresh the UI to apply the updated auth state and layout.
         self.update_layout()
     
     def set_sign_up(self, clear: bool=False) -> None: 
+        # Activate the sign-up section and hide the other authentication sections.
         self.auth_sub_events["main"] = False
         self.auth_sub_events["sign_in"] = False
         self.auth_sub_events["sign_up"] = True
         self.auth_sub_events["security_overlay"] = False
 
+        # Update the heading so that i can guide the users
         self.text_surface.text_option.set_text(text="Register to Elementa Clash")
 
         # Shift positions up to accommodate the confirm password field
@@ -150,11 +168,11 @@ class Auth(BasePage):
 
         if clear:
             self.username_input.text = ""
-            self.username_input.text_surface.text_option.set_text("")
+            self.username_input.text_surface.text_option.set_text(text="")
             self.password_input.text = ""
-            self.password_input.text_surface.text_option.set_text("")
+            self.password_input.text_surface.text_option.set_text(text="")
             self.confirm_password_input.text = ""
-            self.confirm_password_input.text_surface.text_option.set_text("")
+            self.confirm_password_input.text_surface.text_option.set_text(text="")
             
         self.update_layout()
 
@@ -215,11 +233,14 @@ class Auth(BasePage):
         self.toggle_password.on_activate = lambda: toggle_view_password()
         self.toggle_password.add_event_listeners(page_state=self.current_page, condition=active_form_condition)
 
-        # Main Page Buttons
+        # Add the on_active callback so that when its clicked the set_sign_in callback is run
         self.sign_in_button.on_activate = lambda: self.set_sign_in(clear=True)
+        # Add the listers for the sign_in button
         self.sign_in_button.add_event_listeners(page_state=self.current_page, condition=lambda: self.auth_sub_events["main"])
 
+        # Add the on_active callback so that when its clicked the set_sign_up callback is run
         self.sign_up_button.on_activate = lambda: self.set_sign_up(clear=True)
+        # Add the listers for the sign_up button
         self.sign_up_button.add_event_listeners(page_state=self.current_page, condition=lambda: self.auth_sub_events["main"])
 
         # Sub Page Controls
@@ -241,11 +262,15 @@ class Auth(BasePage):
 
     @override
     def update_layout(self) -> None:
+        # Refresh the shared page layout, so the UI can match the window size
         super().update_layout()
+
+        # Update the main page text and authentication redirect buttons.
         self.text_surface.update_layout()
         self.sign_in_button.update_layout()
         self.sign_up_button.update_layout()
 
+        # Update the authentication form, overlay, and security-code controls.
         self.overlay_background.update_layout()
         self.username_input.update_layout()
         self.password_input.update_layout()
@@ -270,6 +295,7 @@ class Auth(BasePage):
         return
     
     def draw_sign_in(self) -> None:
+        return
         self.username_input.draw()
         self.password_input.draw()
         self.toggle_password.draw()
@@ -278,6 +304,7 @@ class Auth(BasePage):
         self.submit_sign_in.draw()
 
     def draw_sign_up(self) -> None:
+        return
         self.username_input.draw()
         self.password_input.draw()
         self.confirm_password_input.draw()
@@ -301,7 +328,7 @@ class Auth(BasePage):
             return
         
         self.text_surface.draw()
-        self.overlay_background.draw()
+        #self.overlay_background.draw()
         if self.auth_sub_events["sign_in"]:
             self.draw_sign_in()
         elif self.auth_sub_events["sign_up"]:

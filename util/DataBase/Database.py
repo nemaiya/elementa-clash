@@ -1,3 +1,5 @@
+from util.Game.Player import DeckData, UserInfo
+
 from .CloudDatabase import CloudDatabase
 from .LocalDatabase import LocalDatabase
 from typing import NamedTuple
@@ -33,6 +35,14 @@ class MasterDatabase():
     @staticmethod
     def get_current_timestamp() -> str:
         return datetime.now(tz=timezone.utc).isoformat()
+    
+    def save_settings(self, music_vol: float, sfx_vol: float, fps: str, font: str) -> None:
+        # Save the settings to the local database
+        self.local.save_settings(music_vol, sfx_vol, fps, font)
+    
+    def get_settings(self) -> dict[str, float | int | str] | None:
+        # Retrieve the settings from the local database
+        return self.local.get_settings()
     
     def username_exists(self, username: str) -> None:
         def _task() -> None:
@@ -116,5 +126,54 @@ class MasterDatabase():
             return
 
         # Start the background thread
+        threading.Thread(target=_task, daemon=True).start()
+        return
+    
+    def create_new_deck(self, user_id: str, deck_data: DeckData) -> None:
+        def _task() -> None:
+            success: bool = self.cloud.create_user_decks(user_id=user_id, deck_data=[deck_data])
+            if success:
+                self.response_queue.put(item=Response(action="create_deck", success=True, message="Deck created successfully.", user_data=None))
+            else:
+                self.response_queue.put(item=Response(action="create_deck", success=False, message="Failed to create deck.", user_data=None))
+            return
+        
+        threading.Thread(target=_task, daemon=True).start()
+        return
+    
+    def update_deck(self, deck_id: str, deck_data: DeckData) -> None:
+        def _task() -> None:
+            success: bool = self.cloud.update_deck(deck_id=deck_id, deck_data=deck_data)
+            if success:
+                self.response_queue.put(item=Response(action="update_deck", success=True, message="Deck updated successfully.", user_data=None))
+            else:
+                self.response_queue.put(item=Response(action="update_deck", success=False, message="Failed to update deck.", user_data=None))
+            return
+        
+        threading.Thread(target=_task, daemon=True).start()
+        return
+    
+    def get_user_info(self, user_id: str) -> None:
+        def _task() -> None:
+            success, user_info, message = self.cloud.get_user_info(user_id=user_id)
+            if success and user_info:
+                
+                self.response_queue.put(item=Response(action="get_user_info", success=True, message=message, user_data=UserInfo(xp=int(user_info.get("xp", 0)), level=int(user_info.get("level", 1), active_deck_uid=user_info.get("activeDeckUid", ""), deck_list_uid=user_info.get("deckListUid", []))))
+            else:
+                self.response_queue.put(item=Response(action="get_user_info", success=False, message=message, user_data=None))
+            return
+        
+        threading.Thread(target=_task, daemon=True).start()
+        return
+    
+    def update_user_info(self, user_id: str, xp: int | None = None, active_deck_uid: str | None = None, deck_list_uid: list[str] | None = None) -> None:
+        def _task() -> None:
+            success: bool = self.cloud.update_user_info(user_id=user_id, xp=xp, active_deck_uid=active_deck_uid, deck_list_uid=deck_list_uid)
+            if success:
+                self.response_queue.put(item=Response(action="update_user_info", success=True, message="User info updated successfully.", user_data=None))
+            else:
+                self.response_queue.put(item=Response(action="update_user_info", success=False, message="Failed to update user info.", user_data=None))
+            return
+        
         threading.Thread(target=_task, daemon=True).start()
         return

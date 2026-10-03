@@ -70,7 +70,7 @@ class Slider(GlobalHolder):
     def get_hit_rect(self) -> Rect:
         return self.track.rect.union(self.knob.rect)
 
-    def set_value(self, value: float) -> None:
+    def set_value(self, value: float, call_change: bool = True) -> None:
         # Keep the value within the slider's range.
         clamped_value: float = self._clamp(value=value)
         # Record whether the value actually changed before updating the layout.
@@ -80,7 +80,7 @@ class Slider(GlobalHolder):
         # Move the knob to reflect the new value.
         self.knob_update_layout()
 
-        if value_changed:
+        if value_changed and call_change:
             # Notify listeners only when the slider value has changed.
             self.on_change()
 
@@ -115,7 +115,7 @@ class Slider(GlobalHolder):
             self.dragging = True
             self.set_value_from_mouse()
         # Start & Register dragging when the pointer clicks on the track or knob
-        self.event_manager.add_event_listener(page_state=page_state, event_rule=EventListenerInputRule(action=begin_drag, hover_rect=self.knob.rect, mouse_action="clicked", condition=condition))#
+        self.event_manager.add_event_listener(page_state=page_state, event_rule=EventListenerInputRule(action=begin_drag, hover_rect=lambda: self.get_hit_rect(), mouse_action="clicked", condition=condition))#
 
         def drag() -> None:
             if self.dragging: self.set_value_from_mouse()
