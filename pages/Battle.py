@@ -15,9 +15,7 @@ class BattlePage(BasePage):
 
     def __init__(self) -> None:
         super().__init__()
-        self.player: Player = Player(uid="123", username="nemaiya", user_info=UserInfo(xp=200, level=2, active_deck_uid="1"), user_decks=[
-            DeckData(uid="1", name="Zhongli's Ass", characters=["jean", "amber", "fishcl"], action_cards=[])
-        ])
+        
         self.change_page(new_state="battle")
         self.init_background(image_key="battle_bg1")
 
@@ -49,5 +47,3 @@ class BattlePage(BasePage):
             self.quit_game_overlay_background.draw()
             self.action_card_selector_subtitle.draw()
             self.action_card_selector_title.draw()
-
-    
