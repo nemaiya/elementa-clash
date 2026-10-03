@@ -11,8 +11,7 @@ class DeckData(TypedDict):
 
 class UserInfo(TypedDict):
     uid: str
-    xp: int
-    level: int                 # Determines unlocked deck slots
+    xp: int             # Determines unlocked deck slots
     active_deck_uid: str
     deck_list_uid: list[str]    # List of deck UIDs associated with the user
 
@@ -26,6 +25,8 @@ class Player:
         for deck in user_decks:
             if deck.get("uid") == self.user_info.get("active_deck_uid"):
                 self.selected_deck: DeckData = deck
+
+        
         
         
         
@@ -33,7 +34,7 @@ class Player:
     
     @property
     def level(self) -> int:
-        return self.user_info.get("level", 1)
+        return self.user_info.get("xp") // 100
 
     def is_deck_slot_unlocked(self, slot_no: int) -> bool:
         """

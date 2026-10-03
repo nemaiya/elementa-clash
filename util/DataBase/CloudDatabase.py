@@ -77,13 +77,13 @@ class CloudDatabase():
         except requests.RequestException as e:
             return False, None, f"Cloud: Network error - {e}"
     
-    def create_new_user_info(self, user_id: str, xp: int, active_deck_uid: str, deck_list_uid: list[str]) -> bool:
-        url: str = f"{self.realtime_url}/users/{user_id}.json"
+    def create_new_user_info(self, user: UserInfo) -> bool:
+        url: str = f"{self.realtime_url}/users/{user['uid']}.json"
         payload: dict[str, int | str | list[str]] = {
-            "id": user_id,
-            "xp": xp,
-            "activeDeckUid": active_deck_uid,
-            "deckListUid": deck_list_uid
+            "id": user['uid'],
+            "xp": user['xp'],
+            "activeDeckUid": user['active_deck_uid'],
+            "deckListUid": user['deck_list_uid']
         }
         try:
             res: Response = requests.put(url, json=payload, timeout=4)
@@ -103,16 +103,11 @@ class CloudDatabase():
             if data is None or not isinstance(data, dict):
                 return False, None, f"Cloud: User '{user_id}' does not exist."
 
-            deck_list_raw = data.get("deckListUid", [])
-            deck_list_uid: list[str] = [
-                str(uid) for uid in deck_list_raw if isinstance(deck_list_raw, list)
-            ] if isinstance(deck_list_raw, list) else []
-
-            user_info = UserInfo(
+            user_info: UserInfo = UserInfo(
                 uid=str(data.get("id", user_id)),
                 xp=int(data.get("xp", 0) or 0),
                 active_deck_uid=str(data.get("activeDeckUid", "")),
-                deck_list_uid=deck_list_uid,
+                deck_list_uid=list(data.get("deckListUid", [])),
             )
             return True, user_info, "User info retrieved successfully."
         except requests.RequestException as e:

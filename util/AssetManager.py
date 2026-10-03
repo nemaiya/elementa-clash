@@ -8,6 +8,8 @@ parent_dir: Path = Path(__file__).parent.parent
 characters_images: dict[str, Path] = {
     "jean": parent_dir / "assets" / "images" / "characters" /"jean.jpg",
     "amber": parent_dir / "assets" / "images" / "characters" /"amber.jpg",
+    "kaeya": parent_dir / "assets" / "images" / "characters" /"kaeya.jpg",
+    "fishcl": parent_dir / "assets" / "images" / "characters" /"fishcl.jpg",
 }
 
 images: dict[str, Path] = {

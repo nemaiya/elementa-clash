@@ -14,7 +14,7 @@ class Response(NamedTuple):
     action: str  # "register" or "login"
     success: bool
     message: str
-    user_data: dict[str, str] | None = None
+    user_data: dict[str, str] | UserInfo | None = None
 
 class MasterDatabase():
     def __init__(self) -> None:
@@ -157,8 +157,7 @@ class MasterDatabase():
         def _task() -> None:
             success, user_info, message = self.cloud.get_user_info(user_id=user_id)
             if success and user_info:
-                
-                self.response_queue.put(item=Response(action="get_user_info", success=True, message=message, user_data=UserInfo(xp=int(user_info.get("xp", 0)), level=int(user_info.get("level", 1), active_deck_uid=user_info.get("activeDeckUid", ""), deck_list_uid=user_info.get("deckListUid", []))))
+                self.response_queue.put(item=Response(action="get_user_info", success=True, message=message, user_data=user_info))
             else:
                 self.response_queue.put(item=Response(action="get_user_info", success=False, message=message, user_data=None))
             return
@@ -173,6 +172,18 @@ class MasterDatabase():
                 self.response_queue.put(item=Response(action="update_user_info", success=True, message="User info updated successfully.", user_data=None))
             else:
                 self.response_queue.put(item=Response(action="update_user_info", success=False, message="Failed to update user info.", user_data=None))
+            return
+        
+        threading.Thread(target=_task, daemon=True).start()
+        return
+
+    def create_new_user_info(self, user: UserInfo) -> None:
+        def _task() -> None:
+            success: bool = self.cloud.create_new_user_info(user=user)
+            if success:
+                self.response_queue.put(item=Response(action="create_user_info", success=True, message="User info created successfully.", user_data=None))
+            else:
+                self.response_queue.put(item=Response(action="create_user_info", success=False, message="Failed to create user info.", user_data=None))
             return
         
         threading.Thread(target=_task, daemon=True).start()

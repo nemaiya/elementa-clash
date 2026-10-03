@@ -1,3 +1,5 @@
+
+
 from components.Image import ImageComponent
 
 from pygame.surface import Surface
@@ -15,11 +17,14 @@ from pygame import Font, Surface
 import pygame
 
 from components import DropDown, ImageOption
+from components.TextInput import TextInput
 from components.Image import ImageComponent, TextImageComponent, TextOption
 from components.Button import Button
 from components.Draggable import DraggableComponent
 from util.Game.Player import DeckData, Player, UserInfo
-from typing import override, final, TypeAlias, Literal
+from typing import Any, override, final, TypeAlias, Literal
+
+from util.Game.Card import CHARACTER_DB, ACTION_DB
 # --- DECK PAGE IMPLEMENTATION ---
 DeckSubEvents: TypeAlias = Literal["deck_list", "deck_preview_char", "deck_preview_action"]
 
@@ -34,8 +39,10 @@ class DeckPage(BasePage):
         if player is None:
             player = Player(uid="234", username="banana", user_info=UserInfo(uid="234", xp=200, active_deck_uid="1", deck_list_uid=["1", "2"]), 
             user_decks=[
-                DeckData(user_id="234", uid="1", name="Mixed Race", characters=["jean", "jean", "jean"], action_cards=[]),
+                DeckData(user_id="234", uid="1", name="Mixed Race", characters=["jean", "amber", "kaeya"], action_cards=[]),
                 DeckData(user_id="234", uid="2", name="Gliding Champs", characters=["amber", "amber", "amber"], action_cards=[]),
+                DeckData(user_id="234", uid="3", name="Deck 3", characters=[], action_cards=[]),
+                DeckData(user_id="234", uid="4", name="Deck 4", characters=[], action_cards=[])
                 ]
             )
         
@@ -43,8 +50,8 @@ class DeckPage(BasePage):
         self.player: Player = player
         self.deck_sub_events: dict[DeckSubEvents, bool] = {"deck_list": True, "deck_preview_char": False, "deck_preview_action": False}
         # Temporary way of showing the number of characters
-        self.available_chars: list[str] = ["jean", "amber"]
-        self.available_actions: list[str] = ["action1", "action2", "action3", "action4", "action5", "action6", "action7", "action8", "action9", "action10"]
+        self.database_chars: list[str] = [char["name"] for char in CHARACTER_DB.values()]
+        self.database_actions: list[str] = [action["name"] for action in ACTION_DB.values()]
 
         # This is populated when a deck is selected for editing or previewing.
         self.selected_deck_edit: DeckData
@@ -112,6 +119,7 @@ class DeckPage(BasePage):
         self.action_deck_button: Button = Button(image_option=ImageOption(image=self.load_image(image_key="deck_button_action")), text_option=TextOption(text="", size=0), position=(5, 87), anchor="topleft") # pyright: ignore[reportUninitializedInstanceVariable]
         self.exit_button: Button = Button(image_option=ImageOption(colored_image=((255, 0, 0), (36, 36))), text_option=TextOption(text="", size=0), position=(0, 504), anchor="topleft") # pyright: ignore[reportUninitializedInstanceVariable]
 
+        #self.change_deck_name: TextInput = TextInput(image_option=ImageOption(image=self.load_image(image_key="text_input_background")), text_option=TextOption(text="", size=0), position=(0, 0), anchor="topleft") # pyright: ignore[reportUninitializedInstanceVariable]
     def handle_card_drop(self, dropped_card: DraggableComponent, card_list: list[DraggableComponent]) -> None:
         """Handles the 1-to-1 swap between cards (or empty slots)."""
         print(f"Handling drop for card with data_key: {dropped_card.data_key}")
@@ -119,30 +127,68 @@ class DeckPage(BasePage):
         
         if target:
             print(f"Collision detected! Swapping {dropped_card.data_key} with {target.data_key}")
-            # 1. Swap data keys (e.g. "jean" trades places with None)
-            temp_key: str | None = dropped_card.data_key
-            dropped_card.data_key = target.data_key
-            target.data_key = temp_key
             
-            # 2. Swap visual images
+            # 1. Correctly swap data keys and images without overwriting
+            temp_key: str | None = dropped_card.data_key
             temp_img: Surface = dropped_card.surface._raw_image
+            
+            dropped_card.data_key = target.data_key
             dropped_card.surface._raw_image = target.surface._raw_image
+            
+            target.data_key = temp_key
             target.surface._raw_image = temp_img
             
-            # 3. Force target to snap into its updated state
+            # 2. Handle Character Cards updating
+            if self.deck_sub_events.get("deck_preview_char"):
+                # Convert None back to "dummy" before saving to the deck
+                current_deck: list[Any | str] = [card.data_key if card.data_key is not None else "dummy" for card in self.top_character_cards]
+                self.selected_deck_edit.update(characters=current_deck)
+                
+                # 3. Replenish the bottom row if an empty slot (None) was swapped down
+                for card in self.bottom_character_cards:
+                    if card.data_key is None:
+                        used_chars = [c.data_key for c in self.top_character_cards + self.bottom_character_cards if c.data_key is not None]
+                        available_chars = [key for key in CHARACTER_DB.keys() if key not in used_chars]
+                        
+                        if available_chars:
+                            new_key = available_chars[0] # Safely grab the first available unused card
+                            card.data_key = new_key
+                            card.surface._raw_image = self.get_character_card_surface(character_key=new_key, card_type="char")
+                            
+            # 4. Handle Action Cards updating
+            elif self.deck_sub_events.get("deck_preview_action"):
+                # Convert None back to "dummy" before saving to the deck
+                current_deck: list[Any | str] = [card.data_key if card.data_key is not None else "dummy" for card in self.top_action_cards]
+                self.selected_deck_edit.update(action_cards=current_deck)
+                
+                # 5. Replenish the bottom row if an empty slot (None) was swapped down
+                for card in self.bottom_action_cards:
+                    if card.data_key is None:
+                        used_actions = [c.data_key for c in self.top_action_cards + self.bottom_action_cards if c.data_key is not None]
+                        available_actions = [key for key in ACTION_DB.keys() if key not in used_actions]
+                        
+                        if available_actions:
+                            new_key = available_actions[0] # Safely grab the first available unused card
+                            card.data_key = new_key
+                            card.surface._raw_image = self.get_character_card_surface(character_key=new_key, card_type="action")
+            
+            # Force target to snap into its updated state
             target.update_layout()
             
-        # Snap the dropped card back to its home (which remained the same)
+        # Snap the dropped card back to its home (which remained the same physical coordinate)
         dropped_card.update_layout()
     
     def setup_cards(self, type: Literal["char", "action"]) -> None:
         if type == "char":
             self.top_character_cards.clear()
             self.bottom_character_cards.clear()
-            player_cards: list[str] = self.player.user_decks[0].get("characters", [])
+            
+            # 1. Use .copy() to prevent modifying the actual player deck data when appending "dummy"
+            player_cards: list[str] = self.selected_deck_edit.get("characters", []).copy()
 
             if len(player_cards) != 3: 
-                while len(player_cards) < 3: player_cards.append("dummy")  # Fill with None for empty slots
+                while len(player_cards) < 3: 
+                    player_cards.append("dummy")  # Fill with dummy for empty slots
 
             for i, character_key in enumerate(player_cards):
                 card: DraggableComponent = DraggableComponent(
@@ -153,8 +199,11 @@ class DeckPage(BasePage):
                 )
                 card.on_drop = lambda dropped_card=card: self.handle_card_drop(dropped_card=dropped_card, card_list=self.top_character_cards)
                 self.top_character_cards.append(card)
+
+            # 2. FIX: Iterate over keys, not values, so we pass the correct ID to the surface generator
+            available_chars: list[str] = [key for key in CHARACTER_DB.keys() if key not in player_cards]
             
-            for i, character_key in enumerate(self.available_chars):
+            for i, character_key in enumerate(available_chars[:5]):  # Limit to 5 for the bottom row
                 card = DraggableComponent(
                     image=self.get_character_card_surface(character_key=character_key, card_type="char"),
                     base_pos=((i * 179) + 82, 285),
@@ -166,25 +215,32 @@ class DeckPage(BasePage):
 
             for card in self.top_character_cards + self.bottom_character_cards:
                 card.add_event_listeners(page_state="deck_menu", condition=lambda: self.deck_sub_events["deck_preview_char"])
+                
         elif type == "action":
             self.top_action_cards.clear()
             self.bottom_action_cards.clear()
-            action_cards: list[str] = self.player.user_decks[0].get("action_cards", [])
+            
+            # 1. Use .copy() here as well
+            action_cards: list[str] = self.selected_deck_edit.get("action_cards", []).copy()
 
             if len(action_cards) != 10:
-                while len(action_cards) < 10: action_cards.append("dummy")  # Fill with None for empty slots
+                while len(action_cards) < 10: 
+                    action_cards.append("dummy")  # Fill with dummy for empty slots
 
             for i, action_key in enumerate(action_cards):
                 card = DraggableComponent(
                     image=self.get_character_card_surface(character_key=action_key, card_type="action"),
                     base_pos=((i * 84) + 67, 75),
                     anchor="topleft",
-                    data_key=action_key
+                    data_key=action_key if action_key != "dummy" else None
                 )
                 card.on_drop = lambda dropped_card=card: self.handle_card_drop(dropped_card=dropped_card, card_list=self.top_action_cards)
                 self.top_action_cards.append(card)
+
+            # 2. FIX: Iterate over keys instead of values
+            available_action: list[str] = [key for key in ACTION_DB.keys() if key not in action_cards]
             
-            for i, action_key in enumerate(self.available_actions):  # Placeholder for available action cards
+            for i, action_key in enumerate(available_action[:10]):  # Limit to 10 for the bottom row
                 card = DraggableComponent(
                     image=self.get_character_card_surface(character_key=action_key, card_type="action"),
                     base_pos=((i * 84) + 67, 285),
@@ -193,12 +249,11 @@ class DeckPage(BasePage):
                 )
                 card.on_drop = lambda dropped_card=card: self.handle_card_drop(dropped_card=dropped_card, card_list=self.top_action_cards)
                 self.bottom_action_cards.append(card)
-            # Similar logic for action cards can be implemented here
+                
             for card in self.top_action_cards + self.bottom_action_cards:
                 card.add_event_listeners(page_state="deck_menu", condition=lambda: self.deck_sub_events["deck_preview_action"])
-        return
 
-
+            
     def menu_handle(self, deck_index: int = 0, action: str | None = None) -> None:
         print(f"Deck {deck_index} selected with action: {action}")
         if not action: return
@@ -220,6 +275,7 @@ class DeckPage(BasePage):
             self.deck_sub_events["deck_preview_char"] = True
             self.selected_deck_edit = self.player.user_decks[deck_index]
 
+            print(f"Selected deck for editing: {self.selected_deck_edit.get('name')}")
             self.setup_cards(type="char")
             self.setup_cards(type="action")
 

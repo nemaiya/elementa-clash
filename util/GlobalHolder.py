@@ -22,7 +22,7 @@ class GlobalHolder:
 
     scale: float = 1.00
 
-    player: Player = Player(uid="", username="", user_info=UserInfo(xp=0, level=1, active_deck_uid="", deck_list_uid=[]), user_decks=[]) # This is the main player object that holds the methods created by the Player Class
+    #player: Player = Player(uid="", username="", user_info=UserInfo(xp=0, level=1, active_deck_uid="", deck_list_uid=[]), user_decks=[]) # This is the main player object that holds the methods created by the Player Class
 
     # Undocumented
     def determine_scale(self) -> None:
