@@ -176,6 +176,16 @@ class TextInput(Button):
         if hasattr(self, 'validations_text_surface') and self.validations_text_surface.text_option.text:
             self.validations_text_surface.update_layout()
 
+    def clear_text(self) -> None:
+        self.text = ""
+        #self.validate_text(self.text)
+        self._update_text_display()
+    
+    def set_text(self, text: str) -> None:
+        self.text = text
+        self.validate_text(self.text)
+        self._update_text_display()
+
     @override
     def change_base_position(self, position: tuple[int, int]) -> None:
         super().change_base_position(position)

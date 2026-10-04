@@ -21,12 +21,14 @@ from components.TextInput import TextInput
 from components.Image import ImageComponent, TextImageComponent, TextOption
 from components.Button import Button
 from components.Draggable import DraggableComponent
+from util.GlobalHolder import GlobalHolder
+from util.Game.Card import ActionCard, CharacterCard
 from util.Game.Player import DeckData, Player, UserInfo
 from typing import Any, override, final, TypeAlias, Literal
 
 from util.Game.Card import CHARACTER_DB, ACTION_DB
 # --- DECK PAGE IMPLEMENTATION ---
-DeckSubEvents: TypeAlias = Literal["deck_list", "deck_preview_char", "deck_preview_action"]
+DeckSubEvents: TypeAlias = Literal["deck_list", "deck_preview_char", "deck_preview_action", "edit_deck_name"]
 
 
 from pages.BasePage import BasePage
@@ -34,27 +36,21 @@ from pages.BasePage import BasePage
 
 class DeckPage(BasePage):
     @final
-    def __init__(self, player: Player | None = None) -> None:
+    def __init__(self) -> None:
+        if not GlobalHolder.player:
+            raise ValueError("Player not found")
         # Use a small sample player template when the page is opened without saved data.
-        if player is None:
-            player = Player(uid="234", username="banana", user_info=UserInfo(uid="234", xp=200, active_deck_uid="1", deck_list_uid=["1", "2"]), 
-            user_decks=[
-                DeckData(user_id="234", uid="1", name="Mixed Race", characters=["jean", "amber", "kaeya"], action_cards=[]),
-                DeckData(user_id="234", uid="2", name="Gliding Champs", characters=["amber", "amber", "amber"], action_cards=[]),
-                DeckData(user_id="234", uid="3", name="Deck 3", characters=[], action_cards=[]),
-                DeckData(user_id="234", uid="4", name="Deck 4", characters=[], action_cards=[])
-                ]
-            )
-        
-        # Store the player and initialise the state used by the deck sub-pages.
-        self.player: Player = player
-        self.deck_sub_events: dict[DeckSubEvents, bool] = {"deck_list": True, "deck_preview_char": False, "deck_preview_action": False}
+        self.deck_sub_events: dict[DeckSubEvents, bool] = {"deck_list": True, "deck_preview_char": False, "deck_preview_action": False, "edit_deck_name": False}
         # Temporary way of showing the number of characters
         self.database_chars: list[str] = [char["name"] for char in CHARACTER_DB.values()]
         self.database_actions: list[str] = [action["name"] for action in ACTION_DB.values()]
 
         # This is populated when a deck is selected for editing or previewing.
         self.selected_deck_edit: DeckData
+        self.saved_deck_snapshot: DeckData | None = None
+        self.editing_deck_index: int | None = None
+        self.renaming_deck_index: int | None = None
+        self.deck_dirty: bool = False
 
         # Top-left positions for the four deck slots on the deck menu.
         self.deck_positions: list[tuple[int, int]] = [(24, 80), (254, 80), (492, 80), (726, 80)]
@@ -75,19 +71,20 @@ class DeckPage(BasePage):
         #                     The deck image,  the card image       , Deck Name                , Drop downs
 
         for i in range(0, 4):
-            if self.player.is_deck_slot_unlocked(slot_no=i):
+            # Check if the deck slot is unlocked for the player. If it is, create an active deck box; if not, create a locked deck box with a message.
+            if GlobalHolder.player.is_deck_slot_unlocked(slot_no=i):
 
                 deck: ImageComponent = ImageComponent(image_option="deck_box_active", base_pos=self.deck_positions[i])
                 deck.update_layout()
                 character_surface: ImageComponent | None = None
                 text_surface: TextImageComponent | None = None
                 
-                if (i < len(self.player.user_decks)) and self.player.user_decks[i].get("characters", []):
+                if (i < len(GlobalHolder.player.user_decks)) and GlobalHolder.player.user_decks[i].get("characters", []):
                     character_surface = ImageComponent(
-                        image_option=self.draw_deck_card(cards=self.player.user_decks[i].get("characters")), 
+                        image_option=self.draw_deck_card(cards=GlobalHolder.player.user_decks[i].get("characters")), 
                         base_pos=(deck.rect.centerx, int(deck.rect.centery * 0.8)), anchor="center")
                     
-                    text_surface = TextImageComponent(text_option=TextOption(text=self.player.user_decks[i].get("name"), size=20, align="center", max_width=int(deck.rect.width * 0.9)), base_pos=(deck.rect.centerx, deck.rect.y + int(deck.rect.height * 0.7)), anchor="center")
+                    text_surface = TextImageComponent(text_option=TextOption(text=GlobalHolder.player.user_decks[i].get("name"), size=20, align="center", max_width=int(deck.rect.width * 0.9)), base_pos=(deck.rect.centerx, deck.rect.y + int(deck.rect.height * 0.7)), anchor="center")
                 
                 #menu_surface: ImageComponent =  ImageComponent(image_option="menu_dots", base_pos=(int(deck.rect.x + int(deck.rect.width * 0.97)), deck.rect.y + int(deck.rect.height * 0.03)) , anchor="topright")
                 menu: DropDown = DropDown(
@@ -118,8 +115,47 @@ class DeckPage(BasePage):
         self.character_deck_button: Button = Button(image_option=ImageOption(image=self.load_image(image_key="deck_button_character")), text_option=TextOption(text="", size=0), position=(5, 32), anchor="topleft") # pyright: ignore[reportUninitializedInstanceVariable]
         self.action_deck_button: Button = Button(image_option=ImageOption(image=self.load_image(image_key="deck_button_action")), text_option=TextOption(text="", size=0), position=(5, 87), anchor="topleft") # pyright: ignore[reportUninitializedInstanceVariable]
         self.exit_button: Button = Button(image_option=ImageOption(colored_image=((255, 0, 0), (36, 36))), text_option=TextOption(text="", size=0), position=(0, 504), anchor="topleft") # pyright: ignore[reportUninitializedInstanceVariable]
+        self.save_deck_button: Button = Button(
+            image_option=ImageOption(colored_image=((82, 100, 121), (160, 42)), round_edges=12),
+            text_option=TextOption(text="Save", size=16, color=(166, 166, 166)),
+            position=(940, 504),
+            anchor="topright",
+        )
+        self.save_deck_button.on_activate = self.save_deck_changes
 
-        #self.change_deck_name: TextInput = TextInput(image_option=ImageOption(image=self.load_image(image_key="text_input_background")), text_option=TextOption(text="", size=0), position=(0, 0), anchor="topleft") # pyright: ignore[reportUninitializedInstanceVariable]
+        self.rename_overlay: ImageComponent = ImageComponent(image_option="confirmation_overlay", base_pos=(480, 243), anchor="center")
+        self.rename_title: TextImageComponent = TextImageComponent(
+            text_option=TextOption(text="Change Deck Name", size=24, align="center", bold=True),
+            base_pos=(480, 170),
+            anchor="center",
+        )
+        self.rename_input: TextInput = TextInput(
+            image_option=ImageOption(image=self.load_image(image_key="text_input1")),
+            text_option=TextOption(text="", size=16, color=(128, 103, 89)),
+            placeholder="Deck name",
+            position=(480, 230),
+            anchor="center",
+            max_length=16,
+        )
+        self.rename_input.validations = [
+            (lambda text: 3 <= len(text.strip()) <= 16, "Name must be 3-16 characters"),
+            (self._rename_is_unique, "That name is already used"),
+            (lambda text: all(character.isalnum() or character.isspace() for character in text), "Use letters, numbers and spaces only"),
+        ]
+        self.rename_save_button: Button = Button(
+            image_option=ImageOption(image=self.load_image(image_key="button1")),
+            text_option=TextOption(text="Save", size=16),
+            position=(348, 326),
+            anchor="center",
+        )
+        self.rename_cancel_button: Button = Button(
+            image_option=ImageOption(image=self.load_image(image_key="button1")),
+            text_option=TextOption(text="Cancel", size=16),
+            position=(612, 326),
+            anchor="center",
+        )
+        self.rename_save_button.on_activate = self.confirm_rename_deck
+        self.rename_cancel_button.on_activate = self.cancel_rename_deck
     def handle_card_drop(self, dropped_card: DraggableComponent, card_list: list[DraggableComponent]) -> None:
         """Handles the 1-to-1 swap between cards (or empty slots)."""
         print(f"Handling drop for card with data_key: {dropped_card.data_key}")
@@ -143,40 +179,70 @@ class DeckPage(BasePage):
                 # Convert None back to "dummy" before saving to the deck
                 current_deck: list[Any | str] = [card.data_key if card.data_key is not None else "dummy" for card in self.top_character_cards]
                 self.selected_deck_edit.update(characters=current_deck)
-                
-                # 3. Replenish the bottom row if an empty slot (None) was swapped down
-                for card in self.bottom_character_cards:
-                    if card.data_key is None:
-                        used_chars = [c.data_key for c in self.top_character_cards + self.bottom_character_cards if c.data_key is not None]
-                        available_chars = [key for key in CHARACTER_DB.keys() if key not in used_chars]
-                        
-                        if available_chars:
-                            new_key = available_chars[0] # Safely grab the first available unused card
-                            card.data_key = new_key
-                            card.surface._raw_image = self.get_character_card_surface(character_key=new_key, card_type="char")
-                            
+
+                # 3. A bottom card dropped onto an empty slot leaves a dummy behind, so refill or remove it
+                if dropped_card in self.bottom_character_cards and dropped_card.data_key in (None, "dummy"):
+                    if not self.replace_or_remove_bottom_card(dropped_card=dropped_card, card_type="char"):
+                        target.update_layout()
+                        return
+
             # 4. Handle Action Cards updating
             elif self.deck_sub_events.get("deck_preview_action"):
                 # Convert None back to "dummy" before saving to the deck
                 current_deck: list[Any | str] = [card.data_key if card.data_key is not None else "dummy" for card in self.top_action_cards]
                 self.selected_deck_edit.update(action_cards=current_deck)
-                
-                # 5. Replenish the bottom row if an empty slot (None) was swapped down
-                for card in self.bottom_action_cards:
-                    if card.data_key is None:
-                        used_actions = [c.data_key for c in self.top_action_cards + self.bottom_action_cards if c.data_key is not None]
-                        available_actions = [key for key in ACTION_DB.keys() if key not in used_actions]
-                        
-                        if available_actions:
-                            new_key = available_actions[0] # Safely grab the first available unused card
-                            card.data_key = new_key
-                            card.surface._raw_image = self.get_character_card_surface(character_key=new_key, card_type="action")
-            
+
+                # 5. A bottom card dropped onto an empty slot leaves a dummy behind, so refill or remove it
+                if dropped_card in self.bottom_action_cards and dropped_card.data_key in (None, "dummy"):
+                    if not self.replace_or_remove_bottom_card(dropped_card=dropped_card, card_type="action"):
+                        target.update_layout()
+                        return
+
+            self._refresh_deck_dirty()
+
             # Force target to snap into its updated state
             target.update_layout()
-            
+
         # Snap the dropped card back to its home (which remained the same physical coordinate)
         dropped_card.update_layout()
+
+    def replace_or_remove_bottom_card(self, dropped_card: DraggableComponent, card_type: Literal["char", "action"]) -> bool:
+        """Fills the bottom slot with an unused card. Returns False if the slot was removed instead."""
+        if card_type == "char":
+            top_cards, bottom_cards, all_keys = self.top_character_cards, self.bottom_character_cards, list(CHARACTER_DB.keys())
+        else:
+            top_cards, bottom_cards, all_keys = self.top_action_cards, self.bottom_action_cards, list(ACTION_DB.keys())
+
+        used_keys: list[str] = [card.data_key for card in top_cards + bottom_cards if card.data_key not in (None, "dummy")]
+        available_keys: list[str] = [key for key in all_keys if key not in used_keys]
+
+        if available_keys:
+            new_key: str = available_keys[0]
+            dropped_card.data_key = new_key
+            if card_type == "char":
+                dropped_card.surface._raw_image = self.get_character_card_surface(character_key=new_key, card_type="char")
+            else:
+                dropped_card.surface._raw_image = self.get_action_card_surface(card_key=new_key)
+            # The old outline was built from the previous image
+            dropped_card.surface.outline_image = None
+            return True
+
+        # Nothing left to show, so take the card off screen and close the gap
+        bottom_cards.remove(dropped_card)
+        dropped_card.surface.outline_image = None
+        self.reposition_bottom_cards(card_type=card_type)
+        return False
+
+    @staticmethod
+    def bottom_card_position(index: int, card_type: Literal["char", "action"]) -> tuple[int, int]:
+        if card_type == "char":
+            return ((index * 179) + 82, 285)
+        return ((index * 84) + 67, 285)
+
+    def reposition_bottom_cards(self, card_type: Literal["char", "action"]) -> None:
+        bottom_cards: list[DraggableComponent] = self.bottom_character_cards if card_type == "char" else self.bottom_action_cards
+        for index, card in enumerate(bottom_cards):
+            card.set_home(new_pos=self.bottom_card_position(index=index, card_type=card_type))
     
     def setup_cards(self, type: Literal["char", "action"]) -> None:
         if type == "char":
@@ -206,7 +272,7 @@ class DeckPage(BasePage):
             for i, character_key in enumerate(available_chars[:5]):  # Limit to 5 for the bottom row
                 card = DraggableComponent(
                     image=self.get_character_card_surface(character_key=character_key, card_type="char"),
-                    base_pos=((i * 179) + 82, 285),
+                    base_pos=self.bottom_card_position(index=i, card_type="char"),
                     anchor="topleft",
                     data_key=character_key
                 )
@@ -214,7 +280,8 @@ class DeckPage(BasePage):
                 self.bottom_character_cards.append(card)
 
             for card in self.top_character_cards + self.bottom_character_cards:
-                card.add_event_listeners(page_state="deck_menu", condition=lambda: self.deck_sub_events["deck_preview_char"])
+                # Removed cards keep their listeners, so check the card is still on screen
+                card.add_event_listeners(page_state="deck_menu", condition=lambda c=card: self.deck_sub_events["deck_preview_char"] and (c in self.top_character_cards or c in self.bottom_character_cards))
                 
         elif type == "action":
             self.top_action_cards.clear()
@@ -229,7 +296,7 @@ class DeckPage(BasePage):
 
             for i, action_key in enumerate(action_cards):
                 card = DraggableComponent(
-                    image=self.get_character_card_surface(character_key=action_key, card_type="action"),
+                    image=self.get_action_card_surface(card_key=action_key),
                     base_pos=((i * 84) + 67, 75),
                     anchor="topleft",
                     data_key=action_key if action_key != "dummy" else None
@@ -242,8 +309,8 @@ class DeckPage(BasePage):
             
             for i, action_key in enumerate(available_action[:10]):  # Limit to 10 for the bottom row
                 card = DraggableComponent(
-                    image=self.get_character_card_surface(character_key=action_key, card_type="action"),
-                    base_pos=((i * 84) + 67, 285),
+                    image=self.get_action_card_surface(card_key=action_key),
+                    base_pos=self.bottom_card_position(index=i, card_type="action"),
                     anchor="topleft",
                     data_key=action_key
                 )
@@ -251,7 +318,8 @@ class DeckPage(BasePage):
                 self.bottom_action_cards.append(card)
                 
             for card in self.top_action_cards + self.bottom_action_cards:
-                card.add_event_listeners(page_state="deck_menu", condition=lambda: self.deck_sub_events["deck_preview_action"])
+                # Removed cards keep their listeners, so check the card is still on screen
+                card.add_event_listeners(page_state="deck_menu", condition=lambda c=card: self.deck_sub_events["deck_preview_action"] and (c in self.top_action_cards or c in self.bottom_action_cards))
 
             
     def menu_handle(self, deck_index: int = 0, action: str | None = None) -> None:
@@ -261,29 +329,167 @@ class DeckPage(BasePage):
         
 
         if action == "Save As Active Deck":
-            self.player.user_info.update(active_deck_uid=self.player.user_decks[deck_index].get("uid"))
+            GlobalHolder.player.user_info.update(active_deck_uid=GlobalHolder.player.user_decks[deck_index].get("uid"))
         elif action == "Edit Deck Name":
-            print("Edit name")
+            self.open_rename_deck(deck_index=deck_index)
         elif action == "Delete Deck":
-            self.selected_deck_edit = self.player.user_decks[deck_index]
+            self.selected_deck_edit = GlobalHolder.player.user_decks[deck_index]
             self.selected_deck_edit.update(name="")
             self.selected_deck_edit.update(characters=[])
             self.selected_deck_edit.update(action_cards=[])
-            self.player.user_decks[deck_index] = self.selected_deck_edit
+            GlobalHolder.player.user_decks[deck_index] = self.selected_deck_edit
         elif action == "Preview/Edit Deck":
             self.deck_sub_events["deck_list"] = False
             self.deck_sub_events["deck_preview_char"] = True
-            self.selected_deck_edit = self.player.user_decks[deck_index]
+            self.editing_deck_index = deck_index
+            self.selected_deck_edit = self._copy_deck(deck=GlobalHolder.player.user_decks[deck_index])
+            self.saved_deck_snapshot = self._copy_deck(deck=self.selected_deck_edit)
+            self.deck_dirty = False
+            self._update_save_button_ui()
 
             print(f"Selected deck for editing: {self.selected_deck_edit.get('name')}")
             self.setup_cards(type="char")
             self.setup_cards(type="action")
 
+    def _copy_deck(self, deck: DeckData) -> DeckData:
+        return DeckData(
+            user_id=deck.get("user_id", ""),
+            uid=deck.get("uid", ""),
+            name=deck.get("name", ""),
+            characters=list(deck.get("characters", [])),
+            action_cards=list(deck.get("action_cards", [])),
+        )
+
+    @staticmethod
+    def _real_cards(cards: list[str]) -> list[str]:
+        return [card for card in cards if card and card != "dummy"]
+
+    def _deck_signature(self, deck: DeckData) -> tuple[tuple[str, ...], tuple[str, ...], str]:
+        return (
+            tuple(self._real_cards(cards=deck.get("characters", []))),
+            tuple(self._real_cards(cards=deck.get("action_cards", []))),
+            deck.get("name", ""),
+        )
+
+    def _preview_is_open(self) -> bool:
+        return self.deck_sub_events["deck_preview_char"] or self.deck_sub_events["deck_preview_action"]
+
+    def _save_button_is_active(self) -> bool:
+        return self._preview_is_open() and self.deck_dirty
+
+    def _update_save_button_ui(self) -> None:
+        if self.deck_dirty:
+            self.save_deck_button.text_surface.text_option.set_color(color=(255, 255, 255))
+        else:
+            self.save_deck_button.text_surface.text_option.set_color(color=(166, 166, 166))
+        self.save_deck_button.update_layout()
+
+    def _refresh_deck_dirty(self) -> None:
+        if self.saved_deck_snapshot is None:
+            self.deck_dirty = False
+        else:
+            self.deck_dirty = self._deck_signature(deck=self.selected_deck_edit) != self._deck_signature(deck=self.saved_deck_snapshot)
+        self._update_save_button_ui()
+
+    def _refresh_deck_slot(self, deck_index: int) -> None:
+        if GlobalHolder.player is None or not 0 <= deck_index < len(self.decks):
+            return
+        bg, _, _, menu = self.decks[deck_index]
+        deck: DeckData = GlobalHolder.player.user_decks[deck_index]
+        characters: list[str] = self._real_cards(cards=deck.get("characters", []))
+        character_surface: ImageComponent | None = None
+        text_surface: TextImageComponent | None = None
+        if characters:
+            character_surface = ImageComponent(
+                image_option=self.draw_deck_card(cards=characters),
+                base_pos=(bg.rect.centerx, int(bg.rect.centery * 0.8)),
+                anchor="center",
+            )
+            character_surface.update_layout()
+        name: str = deck.get("name", "")
+        if name:
+            text_surface = TextImageComponent(
+                text_option=TextOption(text=name, size=20, align="center", max_width=int(bg.rect.width * 0.9)),
+                base_pos=(bg.rect.centerx, bg.rect.y + int(bg.rect.height * 0.7)),
+                anchor="center",
+            )
+            text_surface.update_layout()
+        self.decks[deck_index] = (bg, character_surface, text_surface, menu)
+
+    def save_deck_changes(self) -> None:
+        if not self.deck_dirty or self.editing_deck_index is None or GlobalHolder.player is None:
+            return
+
+        self.selected_deck_edit["characters"] = self._real_cards(cards=self.selected_deck_edit.get("characters", []))
+        self.selected_deck_edit["action_cards"] = self._real_cards(cards=self.selected_deck_edit.get("action_cards", []))
+        GlobalHolder.player.user_decks[self.editing_deck_index] = self._copy_deck(deck=self.selected_deck_edit)
+        if GlobalHolder.player.user_info.get("active_deck_uid") == self.selected_deck_edit.get("uid"):
+            GlobalHolder.player.selected_deck = GlobalHolder.player.user_decks[self.editing_deck_index]
+
+        self.db.update_deck(deck_id=self.selected_deck_edit["uid"], deck_data=self.selected_deck_edit)
+        self.saved_deck_snapshot = self._copy_deck(deck=self.selected_deck_edit)
+        self.deck_dirty = False
+        self._update_save_button_ui()
+        self._refresh_deck_slot(deck_index=self.editing_deck_index)
+
+    def _rename_overlay_open(self) -> bool:
+        return self.deck_sub_events.get("edit_deck_name", False)
+
+    def _rename_is_unique(self, name: str) -> bool:
+        if GlobalHolder.player is None or self.renaming_deck_index is None:
+            return True
+        cleaned: str = name.strip().lower()
+        for index, deck in enumerate(GlobalHolder.player.user_decks):
+            if index != self.renaming_deck_index and deck.get("name", "").strip().lower() == cleaned:
+                return False
+        return True
+
+    def open_rename_deck(self, deck_index: int) -> None:
+        if GlobalHolder.player is None or not 0 <= deck_index < len(GlobalHolder.player.user_decks):
+            return
+        self.renaming_deck_index = deck_index
+        self.deck_sub_events["edit_deck_name"] = True
+        current_name: str = GlobalHolder.player.user_decks[deck_index].get("name", "")
+        self.rename_input.set_text(text=current_name)
+        self.rename_input._enable_typing()
+
+    def cancel_rename_deck(self) -> None:
+        self.rename_input._disable_typing()
+        self.deck_sub_events["edit_deck_name"] = False
+        self.renaming_deck_index = None
+
+    def confirm_rename_deck(self) -> None:
+        if GlobalHolder.player is None or self.renaming_deck_index is None:
+            return
+        name: str = self.rename_input.text.strip()
+        self.rename_input.validate_text(text=name)
+        if not self.rename_input.valid:
+            return
+
+        deck: DeckData = GlobalHolder.player.user_decks[self.renaming_deck_index]
+        deck["name"] = name
+        if GlobalHolder.player.selected_deck is not None and GlobalHolder.player.selected_deck.get("uid") == deck.get("uid"):
+            GlobalHolder.player.selected_deck["name"] = name
+        if self.editing_deck_index == self.renaming_deck_index:
+            self.selected_deck_edit["name"] = name
+            if self.saved_deck_snapshot is not None:
+                self.saved_deck_snapshot["name"] = name
+            self._refresh_deck_dirty()
+
+        self.db.update_deck(deck_id=deck["uid"], deck_data=deck)
+        self._refresh_deck_slot(deck_index=self.renaming_deck_index)
+        self.cancel_rename_deck()
+
     def conditional_exit(self) -> None:
+        if self._rename_overlay_open():
+            self.cancel_rename_deck()
+            return
         if self.deck_sub_events["deck_preview_char"] or self.deck_sub_events["deck_preview_action"]:
             self.deck_sub_events["deck_preview_char"] = False
             self.deck_sub_events["deck_preview_action"] = False
             self.deck_sub_events["deck_list"] = True
+            self.deck_dirty = False
+            self._update_save_button_ui()
         else:
             self.change_page(new_state="main_menu")
         
@@ -305,12 +511,18 @@ class DeckPage(BasePage):
 
         self.action_deck_button.on_activate = show_action_preview
         self.character_deck_button.on_activate = show_character_preview
-        self.character_deck_button.add_event_listeners(page_state="deck_menu", condition=lambda: self.deck_sub_events["deck_preview_char"] or self.deck_sub_events["deck_preview_action"])
+        self.character_deck_button.add_event_listeners(page_state="deck_menu", condition=lambda: self._preview_is_open() and not self._rename_overlay_open())
 
-        self.action_deck_button.add_event_listeners(page_state="deck_menu", condition=lambda: self.deck_sub_events["deck_preview_char"] or self.deck_sub_events["deck_preview_action"])
+        self.action_deck_button.add_event_listeners(page_state="deck_menu", condition=lambda: self._preview_is_open() and not self._rename_overlay_open())
+        self.save_deck_button.add_event_listeners(page_state="deck_menu", condition=self._save_button_is_active)
+
+        self.rename_input.add_event_listeners(page_state="deck_menu", condition=self._rename_overlay_open)
+        self.rename_save_button.add_event_listeners(page_state="deck_menu", condition=lambda: self._rename_overlay_open() and self.rename_input.valid)
+        self.rename_cancel_button.add_event_listeners(page_state="deck_menu", condition=self._rename_overlay_open)
 
         for _, _, _, menu in self.decks:
-            if menu: menu.add_event_listeners(page_state="deck_menu")
+            if menu:
+                menu.add_event_listeners(page_state="deck_menu", condition=lambda: self.deck_sub_events["deck_list"] and not self._rename_overlay_open())
         # As you add buttons (like a back button) or dropdowns for each deck later, 
 
         # their event listener initializations will go here.
@@ -349,7 +561,13 @@ class DeckPage(BasePage):
         self.character_deck_button.update_layout()
         self.action_deck_button.update_layout()
         self.exit_button.update_layout()
+        self.save_deck_button.update_layout()
         self.deck_button_placeholder.update_layout()
+        self.rename_overlay.update_layout()
+        self.rename_title.update_layout()
+        self.rename_input.update_layout()
+        self.rename_save_button.update_layout()
+        self.rename_cancel_button.update_layout()
     
     def get_card_surface(self, name: str | None, card_type: Literal["char", "action"]) -> Surface:
         size: tuple[int, int] = (76, 130)
@@ -370,11 +588,20 @@ class DeckPage(BasePage):
             
         return surf
     
+    def get_action_card_surface(self, card_key: str) -> Surface:
+        if card_key == "dummy":
+            return self.get_card_surface(name=card_key, card_type="action")
+        else:
+            return GlobalHolder.resize_image(image=ActionCard.draw_action_card(card_key=card_key, die_needed=ACTION_DB[card_key]["cost"]["unaligned"]), size=((76, 130)))
+    
     def get_character_card_surface(self, character_key: str, card_type: Literal["char", "action"]) -> Surface:
         """
         Loads a character card image based on the provided key and returns it as a Pygame Surface.
         """
-        return self.get_card_surface(name=character_key, card_type=card_type)
+        if character_key == "dummy":
+            return self.get_card_surface(name=character_key, card_type=card_type)
+        else:
+            return GlobalHolder.resize_image(image=CharacterCard.draw_battle_card(character_key=character_key), size=((76, 130)))
 
         
 
@@ -396,6 +623,7 @@ class DeckPage(BasePage):
             self.deck_button_placeholder.draw()
             self.action_deck_button.draw()
             self.character_deck_button.draw()
+            self.save_deck_button.draw()
 
             if self.deck_sub_events["deck_preview_char"]:
                 for card in self.top_character_cards:
@@ -407,6 +635,14 @@ class DeckPage(BasePage):
                     card.draw()
                 for card in self.bottom_action_cards:
                     card.draw()
+
+        if self._rename_overlay_open():
+            self.quit_game_overlay_background.draw()
+            self.rename_overlay.draw()
+            self.rename_title.draw()
+            self.rename_input.draw()
+            self.rename_save_button.draw()
+            self.rename_cancel_button.draw()
 
     def draw_deck_card(self, cards: list[str]) -> Surface:
         """
@@ -423,8 +659,9 @@ class DeckPage(BasePage):
             return canvas
             
         # Load the base images using your BasePage's load_image method
-        loaded_images: list[Surface] = [self.resize_image(image=self.load_image(image_key=card), size=(76, 130)) for card in cards]
-        
+        loaded_images: list[Surface] = [GlobalHolder.resize_image(image=GlobalHolder.load_image(image_key=card), size=(76, 130)) for card in cards]
+        if not loaded_images:
+            return canvas
         # Base dimensions (assuming all cards are standard size, e.g., 80x120)
         center_x: int = canvas_width // 2
         center_y: int = canvas_height // 2

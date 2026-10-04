@@ -66,10 +66,18 @@ class MasterDatabase():
                     self.local.save_user_auth_data(user_id=user_data.get("id", ""), username=user_data.get("username", ""), password_hash=user_data.get("password", ""), timestamp=self.get_current_timestamp())
                 except Exception as e:
                     print(f"Warning: Could not save to local database: {e}")
-
+                
+                user_id: str = user_data.get("id", "")
+                info_ok, user_info, info_message = self.cloud.get_user_info(user_id=user_id)
+                if not info_ok or user_info is None:
+                    self.response_queue.put(item=Response(action="sign_in", success=False, message=info_message, user_data=None))
+                    return
+                decks_ok, deck_data, decks_message = self.cloud.get_user_decks(user_id=user_id, deck_ids=user_info["deck_list_uid"])
+                if not decks_ok or deck_data is None:
+                    self.response_queue.put(item=Response(action="sign_in", success=False, message=decks_message, user_data=None))
+                    return
                 # 4. Send success back to Pygame loop
-                #print("Success")
-                self.response_queue.put(item=Response(action="sign_in", success=True, message=message, user_data=user_data))
+                self.response_queue.put(item=Response(action="sign_in", success=True, message=message, user_data={"user_data": user_data, "user_info": user_info, "deck_data": deck_data}))
             else:
                 #print(message)
                 # 5. Send failure back to Pygame loop
@@ -129,9 +137,9 @@ class MasterDatabase():
         threading.Thread(target=_task, daemon=True).start()
         return
     
-    def create_new_deck(self, user_id: str, deck_data: DeckData) -> None:
+    def create_new_deck(self, user_id: str, deck_data: list[DeckData]) -> None:
         def _task() -> None:
-            success: bool = self.cloud.create_user_decks(user_id=user_id, deck_data=[deck_data])
+            success: bool = self.cloud.create_user_decks(user_id=user_id, deck_data=deck_data)
             if success:
                 self.response_queue.put(item=Response(action="create_deck", success=True, message="Deck created successfully.", user_data=None))
             else:
@@ -177,9 +185,9 @@ class MasterDatabase():
         threading.Thread(target=_task, daemon=True).start()
         return
 
-    def create_new_user_info(self, user: UserInfo) -> None:
+    def create_new_user_info(self, user_info: UserInfo) -> None:
         def _task() -> None:
-            success: bool = self.cloud.create_new_user_info(user=user)
+            success: bool = self.cloud.create_new_user_info(user=user_info)
             if success:
                 self.response_queue.put(item=Response(action="create_user_info", success=True, message="User info created successfully.", user_data=None))
             else:

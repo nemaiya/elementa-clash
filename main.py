@@ -31,7 +31,7 @@ class GameManager():
 
     def __init__(self) -> None:
         # Start on the battle page when the game manager is created.
-        self.current_page = BattlePage() 
+        self.current_page = Auth() 
         # Begin the main game loop immediately.
         self.run()
 

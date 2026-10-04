@@ -9,7 +9,29 @@ characters_images: dict[str, Path] = {
     "jean": parent_dir / "assets" / "images" / "characters" /"jean.jpg",
     "amber": parent_dir / "assets" / "images" / "characters" /"amber.jpg",
     "kaeya": parent_dir / "assets" / "images" / "characters" /"kaeya.jpg",
-    "fishcl": parent_dir / "assets" / "images" / "characters" /"fishcl.jpg",
+    "fischl": parent_dir / "assets" / "images" / "characters" /"fishcl.jpg",
+}
+
+action_cards_images: dict[str, Path] = {
+    "magic_guide": parent_dir / "assets" / "images" / "action_cards" / "magic_guide.jpg",
+    "raven_bow": parent_dir / "assets" / "images" / "action_cards" / "raven_bow.jpg",
+    "white_iron_greatsword": parent_dir / "assets" / "images" / "action_cards" / "white_iron_greatsword.jpg",
+    "white_tassel": parent_dir / "assets" / "images" / "action_cards" / "white_tassel.jpg",
+    "travelers_handy_sword": parent_dir / "assets" / "images" / "action_cards" / "travelers_handy_sword.jpg",
+    "exiles_circlet": parent_dir / "assets" / "images" / "action_cards" / "exiles_circlet.jpg",
+    "broken_rimes_echo": parent_dir / "assets" / "images" / "action_cards" / "broken_rimes_echo.jpg",
+    "wine_stained_tricorne": parent_dir / "assets" / "images" / "action_cards" / "wine_stained_tricorne.jpg",
+    "witchs_scorching_hat": parent_dir / "assets" / "images" / "action_cards" / "witchs_scorching_hat.jpg",
+    "thunder_summoners_crown": parent_dir / "assets" / "images" / "action_cards" / "thunder_summoners_crown.jpg",
+    "viridescent_venerers_diadem": parent_dir / "assets" / "images" / "action_cards" / "viridescent_venerers_diadem.jpg",
+    "mask_of_solitude_basalt": parent_dir / "assets" / "images" / "action_cards" / "mask_of_solitude_basalt.jpg",
+    "laurel_coronet": parent_dir / "assets" / "images" / "action_cards" / "laurel_coronet.jpg",
+    "dawn_winery": parent_dir / "assets" / "images" / "action_cards" / "dawn_winery.jpg",
+    "favonious_cathedral": parent_dir / "assets" / "images" / "action_cards" / "favonious_cathedral.jpg",
+    "paimon": parent_dir / "assets" / "images" / "action_cards" / "paimon.jpg",
+    "sweet_madame": parent_dir / "assets" / "images" / "action_cards" / "sweet_madame.jpg",
+    "mondstadt_hash_brown": parent_dir / "assets" / "images" / "action_cards" / "mondstadt_hash_brown.jpg",
+    "minty_meat_rolls": parent_dir / "assets" / "images" / "action_cards" / "minty_meat_rolls.jpg",
 }
 
 images: dict[str, Path] = {
@@ -31,6 +53,8 @@ images: dict[str, Path] = {
     "button1_outline": parent_dir / "assets" / "images" / "button_type1_outline.png",
 
     "text_input1": parent_dir / "assets" / "images" / "text_input1.png",
+    "eye_open": parent_dir / "assets" / "images" / "eye_open.png",
+    "eye_closed": parent_dir / "assets" / "images" / "eye_closed.png",
 
 
     "setting1": parent_dir / "assets" / "images" / "setting_icon_32_32.png",
@@ -48,9 +72,27 @@ images: dict[str, Path] = {
 
     "battle_bg1": parent_dir / "assets" / "images" / "battle" / "battle_bg1.png",
     "end_of_turn": parent_dir / "assets" / "images" / "battle" / "time_clock.png",
+    "die_needed_action_card_placeholder": parent_dir / "assets" / "images" / "battle" / "die_needed_action_card_placeholder.png",
+    "energy_unactive": parent_dir / "assets" / "images" / "battle" / "energy_unactive.png",
+    "energy_active": parent_dir / "assets" / "images" / "battle" / "energy_active.png",
+    "health_placeholder_character": parent_dir / "assets" / "images" / "battle" / "health_placeholder_character.png",
+    "attack_placeholder": parent_dir / "assets" / "images" / "battle" / "attack_placeholder.png",
+    "dice_number": parent_dir / "assets" / "images" / "battle" / "dice_number.png",
 }
 
+element_images: dict[str, Path] = {
+    "element_pyro": parent_dir / "assets" / "images" / "battle" / "pyro.png",
+    "element_hydro": parent_dir / "assets" / "images" / "battle" / "hydro.png",
+    "element_anemo": parent_dir / "assets" / "images" / "battle" / "anemo.png",
+    "element_electro": parent_dir / "assets" / "images" / "battle" / "electro.png",
+    "element_dendro": parent_dir / "assets" / "images" / "battle" / "dendro.png",
+    "element_cryo": parent_dir / "assets" / "images" / "battle" / "cryp#o.png",
+    "element_geo": parent_dir / "assets" / "images" / "battle" / "geo.png",
+}
+
+images.update(element_images)
 images.update(characters_images)
+images.update(action_cards_images)
 
 
 music: dict[str, Path] = {

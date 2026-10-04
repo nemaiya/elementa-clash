@@ -1,11 +1,16 @@
+from __future__ import annotations
 
-
+from pygame.surface import Surface
 from typing import TypeAlias, Literal, TypedDict
 
-from pygame import Surface
+from pygame import Surface, SRCALPHA
+
+from components import ImageOption
+from components.Image import ImageComponent, TextImageComponent, TextOption
+from util.GlobalHolder import GlobalHolder
 
 ElementalTypes: TypeAlias = Literal["anemo", "pyro", "hydro", "geo", "electro", "dendro", "cryo", "omni"]
-WeaponTypes: TypeAlias = Literal["sword", "bow", "claymore"]
+WeaponTypes: TypeAlias = Literal["sword", "bow", "claymore", "polearm", "catalyst"]
 CostType: TypeAlias = ElementalTypes | Literal["unaligned", "energy"]
 
 class SkillModel(TypedDict, total=False):
@@ -111,7 +116,7 @@ class EffectModel(TypedDict, total=False):
 class ActionCardModel(TypedDict):
     name: str
     image_key: str
-    cost: dict[ActionCostType, int]
+    cost: dict[Literal["unaligned"], int]
     effect_description: str
     effect: EffectModel
 
@@ -210,21 +215,21 @@ ACTION_DB: dict[str, ActionCardModel] = {
     "dawn_winery": {
         "name": "Dawn Winery",
         "image_key": "dawn_winery",
-        "cost": {"matching": 2},
+        "cost": {"unaligned": 2},
         "effect_description": "Location: When you perform \"Switch Character\", spend 1 less Elemental Die. (Once per Round)",
         "effect": {"switch_cost_reduction": 1, "type": "location", "limit": "once_per_round"}
     },
     "favonious_cathedral": {
         "name": "Favonious Cathedral",
         "image_key": "favonious_cathedral",
-        "cost": {"matching": 2},
+        "cost": {"unaligned": 2},
         "effect_description": "Location: End Phase: Heal your active character for 2 HP.",
         "effect": {"heal": 2, "target": "active_character", "type": "location", "phase": "end_phase"}
     },
     "paimon": {
         "name": "Paimon",
         "image_key": "paimon",
-        "cost": {"matching": 3},
+        "cost": {"unaligned": 3},
         "effect_description": "Support: Action Phase starts: Create 2 Omni Element Dice. Lasts for 2 Rounds.",
         "effect": {"generate_dice": {"omni": 2}, "type": "support", "phase": "action_phase_start", "duration": 2}
     },
@@ -266,6 +271,7 @@ class CharacterCard(Card):
 
         # Initialize base card properties
         super().__init__(name=data["name"], image_key=data["image_key"])
+        self.character_id: str = character_id
 
         # Set character-specific combat stats
         self.element: ElementalTypes = data["element"]
@@ -276,9 +282,130 @@ class CharacterCard(Card):
         self.current_energy: int = 0           # Starts at 0 energy
         self.skills: dict[Literal["normal", "skill", "burst"], SkillModel] = data["skills"]
 
+        self.applied_element: ElementalTypes | None = None
+        self.frozen: bool = False
+        self.shield: int = 0
+        self.weapon_card: ActionCard | None = None
+        self.artifact_card: ActionCard | None = None
+        self.next_attack_bonus: int = 0
+        self.satiated: bool = False
+        self.artifact_used_this_round: bool = False
+        self.minty_uses_left: int = 0
+
+        self.card_image: ImageComponent 
+        self.health_image: TextImageComponent
+
+    @property
+    def is_alive(self) -> bool:
+        return self.current_hp > 0
+
+    def heal(self, amount: int) -> int:
+        if not self.is_alive or amount <= 0:
+            return 0
+        before: int = self.current_hp
+        self.current_hp = min(self.max_hp, self.current_hp + amount)
+        return self.current_hp - before
+
+    def reset_round_flags(self) -> None:
+        self.satiated = False
+        self.artifact_used_this_round = False
+        self.minty_uses_left = 0
+
+    @staticmethod
+    def draw_battle_card(character_key: str, current_hp: int | None = None, current_energy: int | None = None) -> Surface:
+        import pygame
+        character_data = CHARACTER_DB.get(character_key)
+        if not character_data:
+            raise ValueError(f"Character '{character_key}' not found in CHARACTER_DB.")
+
+        card_size = (115, 180)
+        card_surface: Surface = GlobalHolder.resize_image(image=GlobalHolder.load_image(image_key=character_data["image_key"]), size=card_size)
+        
+        health_placeholder_character: Surface = GlobalHolder.resize_image(
+            image=GlobalHolder.load_image(image_key="health_placeholder_character"), size=(32, 40)
+        )
+        health_image: Surface = GlobalHolder.font_manager.render(
+            text=str(character_data["max_hp"] if current_hp is None else current_hp), size=32
+        )
+
+        # Center the health text nicely onto the droplet placeholder
+        health_rect = health_image.get_rect(center=health_placeholder_character.get_rect().center)
+        _ = health_placeholder_character.blit(source=health_image, dest=health_rect)
+
+        # Master Canvas Calculations:
+        # Left offset: 10 pixels (for health placeholder at -10)
+        # Top offset: 10 pixels (for health placeholder at -10)
+        # Right offset: 18 pixels (card is 115 wide. Energy at x=100 + width 33 = 133. 133 - 115 = 18)
+        master_width = 10 + card_size[0] + 18 
+        master_height = 10 + card_size[1]
+        
+        # Create a transparent canvas that encompasses the card and all overhangs
+        master_surface = pygame.Surface((master_width, master_height), pygame.SRCALPHA)
+
+        # Draw the card base shifted right and down by 10 pixels to leave room for the top-left overhang
+        _ = master_surface.blit(source=card_surface, dest=(10, 10))
+
+        # Draw energy shells onto the master surface
+        # X: 100 (original x) + 10 (canvas shift) = 110
+        # Y: i * 20 (original y) + 10 (canvas shift) = 10 + (i * 20)
+        filled_energy: int = 0 if current_energy is None else max(0, current_energy)
+        for i in range(character_data["max_energy"]):
+            energy_key: str = "energy_active" if i < filled_energy else "energy_unactive"
+            energy_image: Surface = GlobalHolder.resize_image(
+                image=GlobalHolder.load_image(image_key=energy_key), size=(33, 33)
+            )
+            _ = master_surface.blit(source=energy_image, dest=(110, 10 + (i * 20)))
+        
+        # Draw the health combined image at (0, 0), which visually maps to (-10, -10) relative to the card
+        _ = master_surface.blit(source=health_placeholder_character, dest=(0, 0))
+        
+        return master_surface
+
 
 class ActionCard(Card):
-    def __init__(self, name: str, image_key: str, cost: dict[CostType, int], effect_description: str) -> None:
-        super().__init__(name, image_key)
-        self.cost: dict[CostType, int] = cost
-        self.effect_description: str = effect_description
+    def __init__(self, action_card_id: str) -> None:
+        data = ACTION_DB.get(action_card_id)
+        if not data:
+            raise ValueError(f"Action card '{action_card_id}' not found in ACTION_DB.")
+
+        super().__init__(name=data["name"], image_key=data["image_key"])
+        self.card_id: str = action_card_id
+        self.cost: dict[CostType, int] = data["cost"]
+        self.effect_description: str = data["effect_description"]
+        self.effect: EffectModel = data["effect"]
+        self.duration_left: int = int(data["effect"]["duration"]) if isinstance(data["effect"].get("duration"), int) else 0
+    
+    @staticmethod
+    def draw_action_card(card_key: str, die_needed: int = 0) -> Surface:
+        card_size: tuple[int, int] = (115, 180)
+        
+        # Base card surface
+        card_surface: Surface = GlobalHolder.resize_image(
+            image=GlobalHolder.load_image(image_key=card_key), 
+            size=card_size
+        )
+        
+        # Load placeholder and render the text
+        die_needed_placeholder: Surface = GlobalHolder.resize_image(
+            image=GlobalHolder.load_image(image_key="die_needed_action_card_placeholder"), 
+            size=(53, 50)
+        )
+        die_needed_number: Surface = GlobalHolder.font_manager.render(text=str(die_needed), size=32)
+
+        # Center the text on the placeholder
+        text_rect = die_needed_number.get_rect(center=die_needed_placeholder.get_rect().center)
+        _ = die_needed_placeholder.blit(source=die_needed_number, dest=text_rect)
+
+        # FIX: Create a transparent master surface large enough to hold the overhang.
+        # We need 23 extra pixels on the left and 10 extra pixels on the top.
+        master_width = card_size[0] + 23
+        master_height = card_size[1] + 10
+        master_surface: Surface = Surface((master_width, master_height), SRCALPHA)
+        
+        # Draw the card shifted to the right and down to leave room for the overhang
+        _ = master_surface.blit(source=card_surface, dest=(23, 10))
+        
+        # Draw the placeholder at (0, 0), which visually places it exactly where your (-23, -10) was
+        _ = master_surface.blit(source=die_needed_placeholder, dest=(0, 0))
+
+        return master_surface

@@ -13,7 +13,7 @@ class CloudDatabase():
         self.realtime_url: str = f"https://{PROJECT_ID}-default-rtdb.firebaseio.com"
     
     def username_exists(self, username: str) -> bool:
-        url: str = f"{self.realtime_url}/users/{username}.json"
+        url: str = f"{self.realtime_url}/users_auth/{username}.json"
         try:
             res: Response = requests.get(url, timeout=4)
             # In RTDB, a missing path returns 200 OK but with a body of 'null'
@@ -22,7 +22,7 @@ class CloudDatabase():
             return False
         
     def register_new_user(self, username: str, user_id: str, password_hash: str, timestamp: str, security_code: str) -> bool:
-        url: str = f"{self.realtime_url}/users/{username}.json"
+        url: str = f"{self.realtime_url}/users_auth/{username}.json"
         
         # RTDB takes standard flat JSON - no need for 'stringValue' wrappers
         payload = {
@@ -44,7 +44,7 @@ class CloudDatabase():
             return False
     
     def verify_credentials(self, username: str, password_hash: str) -> tuple[bool, dict[str, str] | None, str]:
-        url: str = f"{self.realtime_url}/users/{username}.json"
+        url: str = f"{self.realtime_url}/users_auth/{username}.json"
         
         try:
             res: Response = requests.get(url, timeout=4)
@@ -78,7 +78,7 @@ class CloudDatabase():
             return False, None, f"Cloud: Network error - {e}"
     
     def create_new_user_info(self, user: UserInfo) -> bool:
-        url: str = f"{self.realtime_url}/users/{user['uid']}.json"
+        url: str = f"{self.realtime_url}/users_info/{user['uid']}.json"
         payload: dict[str, int | str | list[str]] = {
             "id": user['uid'],
             "xp": user['xp'],
@@ -93,7 +93,7 @@ class CloudDatabase():
             return False
     
     def get_user_info(self, user_id: str) -> tuple[bool, UserInfo | None, str]:
-        url: str = f"{self.realtime_url}/users/{user_id}.json"
+        url: str = f"{self.realtime_url}/users_info/{user_id}.json"
         try:
             res: Response = requests.get(url, timeout=4)
             if res.status_code != 200:
@@ -114,7 +114,7 @@ class CloudDatabase():
             return False, None, f"Cloud: Network error - {e}"
     
     def update_user_info(self, user_id: str, xp: int | None = None, active_deck_uid: str | None = None, deck_list_uid: list[str] | None = None) -> bool:
-        url: str = f"{self.realtime_url}/users/{user_id}.json"
+        url: str = f"{self.realtime_url}/users_info/{user_id}.json"
         payload: dict[str, int | str | list[str]] = {}
         
         if xp is not None:
@@ -149,7 +149,7 @@ class CloudDatabase():
                 success = False
                 continue
                 
-            url: str = f"{self.realtime_url}/decks/{deck_id}.json"
+            url: str = f"{self.realtime_url}/user_decks/{deck_id}.json"
 
             # RTDB accepts arrays natively
             payload = {
@@ -189,7 +189,7 @@ class CloudDatabase():
             print("No valid fields provided to update.")
             return False
             
-        url: str = f"{self.realtime_url}/decks/{deck_id}.json"
+        url: str = f"{self.realtime_url}/user_decks/{deck_id}.json"
 
         try:
             # PATCH in RTDB automatically merges data.
@@ -202,6 +202,48 @@ class CloudDatabase():
         except requests.RequestException as e:
             print(f"Request failed for updating deck {deck_id}: {e}")
             return False
+
+    def _parse_deck(self, deck_id: str, data: dict[str, object], fallback_user_id: str = "") -> DeckData:
+        characters = data.get("chars", data.get("characters", []))
+        action_cards = data.get("action", data.get("action_cards", []))
+        return DeckData(
+            user_id=str(data.get("userId", fallback_user_id)),
+            uid=str(data.get("deckId", deck_id)),
+            name=str(data.get("name", "")),
+            characters=list(characters) if isinstance(characters, list) else [],
+            action_cards=list(action_cards) if isinstance(action_cards, list) else [],
+        )
+
+    def get_deck(self, deck_id: str, user_id: str = "") -> tuple[bool, DeckData | None, str]:
+        url: str = f"{self.realtime_url}/user_decks/{deck_id}.json"
+        try:
+            res: Response = requests.get(url, timeout=4)
+            if res.status_code != 200:
+                return False, None, f"Cloud: Database error {res.status_code} - {res.text}"
+            data = res.json()
+            if data is None or not isinstance(data, dict):
+                return False, None, f"Cloud: Deck '{deck_id}' does not exist."
+            return True, self._parse_deck(deck_id=deck_id, data=data, fallback_user_id=user_id), "Deck retrieved successfully."
+        except requests.RequestException as e:
+            return False, None, f"Cloud: Network error - {e}"
+
+    def get_user_decks(self, user_id: str, deck_ids: list[str] | None = None) -> tuple[bool, list[DeckData] | None, str]:
+        ids: list[str] = list(deck_ids or [])
+        if not ids:
+            info_ok, user_info, info_message = self.get_user_info(user_id=user_id)
+            if not info_ok or user_info is None:
+                return False, None, info_message
+            ids = list(user_info["deck_list_uid"])
+
+        decks: list[DeckData] = []
+        for deck_id in ids:
+            if not deck_id:
+                continue
+            ok, deck, message = self.get_deck(deck_id=deck_id, user_id=user_id)
+            if not ok or deck is None:
+                return False, None, message
+            decks.append(deck)
+        return True, decks, "User decks retrieved successfully."
 
 if __name__ == "__main__":
     db: CloudDatabase = CloudDatabase()

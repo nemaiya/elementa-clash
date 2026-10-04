@@ -3,6 +3,7 @@ from .EventListenerManager import EventListenerInputRule, EventListenerManager
 from .AssetManager import images, music, sfx, fonts
 from .MusicManager import MusicManager
 from .FontManager import FontManager
+from .GlobalHolder import GlobalHolder
 
 __all__ = [
     "ScreenManager",
@@ -10,6 +11,7 @@ __all__ = [
     "EventListenerInputRule",
     "MusicManager",
     "FontManager",
+    "GlobalHolder",
     "images",
     "music",
     "sfx",

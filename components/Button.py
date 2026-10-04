@@ -137,6 +137,16 @@ class Button(GlobalHolder):
         # Check if the Button works with a key before rendering/drawing
         if self._key:
             self.draw_key_label(key=self._key, image_rect=self.surface.rect)
+        
+    def change_image(self, image: Surface) -> None:
+        # Change the image of the button
+        self.surface._raw_image = image
+        # Update the layout of the button
+        self.surface.update_layout()
+        # Update the layout of the text
+        self.text_surface.update_layout()
+        # Return
+        return
     
     def change_base_position(self, position: tuple[int, int]) ->  None:
         self.surface._raw_base_pos = position

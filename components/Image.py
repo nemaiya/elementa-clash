@@ -188,3 +188,8 @@ class TextImageComponent(ImageComponent):
         self._raw_image = self.render()
         
         return super().update_layout()
+    
+    def set_text(self, text: str) -> None:
+        self.text_option.set_text(text=text)
+        self._raw_image = self.render()
+        self.update_layout()
