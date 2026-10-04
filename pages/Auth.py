@@ -50,25 +50,23 @@ class Auth(BasePage):
         self.new_code_button: Button = Button(image_option=ImageOption(image=self.load_image(image_key="button3")), text_option=TextOption(text="New Code", size=13), position=(360, 380), anchor="center") # pyright: ignore[reportUninitializedInstanceVariable]
         self.confirm_security_code: Button = Button(image_option=ImageOption(image=self.load_image(image_key="button3")), text_option=TextOption(text="Register", size=13), position=(600, 380), anchor="center") # pyright: ignore[reportUninitializedInstanceVariable]
         
-        def _constrains(text: str, allowed: str="abcdefghijklmnopqrstuvwxyz0123456789_.") -> bool:
+        def constrains(text: str, allowed: str="abcdefghijklmnopqrstuvwxyz0123456789_.") -> bool:
+            # Check if the text contains only the allowed characters
             for character in text:
+                # Check if the character is not in the allowed characters
                 if character not in allowed: return False
+            # Return True if the text contains only the allowed characters
             return True
         
         def length_check(text: str, min: int= 5, max: int= 10) -> bool:
+            # Check if the text length is between the minimum and maximum length
             text_length: int = len(text)
             if text_length < min or text_length > max:
                 return False
             return True
-    
-        def _existing_username(text: str) -> bool:
-            existing = ["123"]
-            if text in existing:
-                return False
-            return True
         # The username input is initialised with the placeholder of Username and position at the centered axis with the maximum character of 10
         self.username_input: TextInput = TextInput(image_option=ImageOption(image=self.load_image(image_key="text_input1")), text_option=TextOption(text="", size=16, color=(128, 103, 89)), placeholder="Username", position=(480, 274), anchor="center", max_length=10) # pyright: ignore[reportUninitializedInstanceVariable]
-        self.username_input.validations = [( lambda text: _constrains(text) , "The username can only contain a-z, 0-9 and . _"), (_existing_username, "The username is already taken"), (length_check, "The username must be between 5-10 characters")]
+        self.username_input.validations = [( lambda text: constrains(text) , "The username can only contain a-z, 0-9 and . _"), (length_check, "The username must be between 5-10 characters")]
         
         self.password_input: TextInput = TextInput(image_option=ImageOption(image=self.load_image(image_key="text_input1")), text_option=TextOption(text="", size=16, color=(128, 103, 89)), placeholder="Password", position=(480, 354), anchor="center", password=True) # pyright: ignore[reportUninitializedInstanceVariable]
         self.password_input.validations = [(lambda text: length_check(text=text, min=8, max=15), "The password should be between 8-15 chars long"), (lambda text: text != self.username_input.text, "Password cannot be the same as the username")]
@@ -339,14 +337,14 @@ class Auth(BasePage):
         self.password_input.draw()
         # Draw the toggle password button
         self.toggle_password.draw()
-        return
+        #return
         self.go_back_button.draw()
         self.submit_sign_in.draw()
 
     def draw_sign_up(self) -> None:
         # Draw the sign-up form fields and actions.
         self.username_input.draw()
-        return
+        #return
         self.password_input.draw()
         self.confirm_password_input.draw()
         self.toggle_password.draw()
