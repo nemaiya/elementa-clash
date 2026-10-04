@@ -12,8 +12,17 @@ class DeckData(TypedDict):
 class UserInfo(TypedDict):
     uid: str # Stores the user id
     xp: int  # the xp value of the user, used to calculate level
+    battle_wins: int # the number of battles won by the user
+    total_battles: int # the total number of battles played by the user
     active_deck_uid: str # uid of the currently selected deck for the user
     deck_list_uid: list[str]  # List of deck UIDs associated with the user
+
+class LeaderboardEntry(TypedDict):
+    uid: str
+    username: str
+    xp: int
+    battle_wins: int
+    total_battles: int
 
 class Player:
     def __init__(self, uid: str, username: str, user_info: UserInfo, user_decks: list[DeckData]) -> None:
@@ -33,7 +42,25 @@ class Player:
 
     @property
     def level(self) -> int:
-        return self.user_info.get("xp") // 100
+        return self.user_info.get("xp", 0) // 100
+
+    @staticmethod
+    def battle_xp(elapsed_ms: int, characters_alive: int) -> int:
+        # Faster wins keep more of the time bonus; leftover characters add extra XP.
+        seconds: int = max(0, elapsed_ms // 1000)
+        time_xp: int = max(10, 80 - seconds // 2)
+        alive_xp: int = max(0, characters_alive) * 25
+        return time_xp + alive_xp
+
+    def record_battle(self, won: bool, elapsed_ms: int = 0, characters_alive: int = 0) -> int:
+        """Updates local user_info after a battle. Returns XP gained this battle."""
+        self.user_info["total_battles"] = int(self.user_info.get("total_battles", 0)) + 1
+        xp_gained: int = 0
+        if won:
+            self.user_info["battle_wins"] = int(self.user_info.get("battle_wins", 0)) + 1
+            xp_gained = self.battle_xp(elapsed_ms=elapsed_ms, characters_alive=characters_alive)
+            self.user_info["xp"] = int(self.user_info.get("xp", 0)) + xp_gained
+        return xp_gained
 
     def is_deck_slot_unlocked(self, slot_no: int) -> bool:
         """

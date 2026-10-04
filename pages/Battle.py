@@ -23,8 +23,11 @@ class BattlePage(BasePage):
 
     DICE_ROLL_MS: int = 700
     DICE_FACE_SWAP_MS: int = 70
-    DIE_SIZE: tuple[int, int] = (84, 84)
-    DIE_POSITIONS: list[tuple[int, int]] = [(300, 235), (420, 235), (540, 235), (660, 235), (300, 340), (420, 340), (540, 340), (660, 340)]
+    DIE_SIZE: tuple[int, int] = (64, 64)
+    DIE_POSITIONS: list[tuple[int, int]] = [
+        (214, 235), (290, 235), (366, 235), (442, 235), (518, 235), (594, 235), (670, 235), (746, 235),
+        (214, 340), (290, 340), (366, 340), (442, 340), (518, 340), (594, 340), (670, 340), (746, 340),
+    ]
     DIE_COLORS: dict[str, tuple[int, int, int]] = {
         "omni": (255, 236, 190),
         "pyro": (239, 121, 56),
@@ -55,11 +58,12 @@ class BattlePage(BasePage):
     BOARD_DICE_X: int = 838
     BOARD_DICE_TOP_Y: int = 162
     BOARD_DICE_SPACING: int = 26
-    BOARD_DICE_PER_COLUMN: int = 9
+    BOARD_DICE_PER_COLUMN: int = 8
     BOT_THINK_MS: int = 1200
     ROUND_END_DELAY_MS: int = 1500
     BANNER_MS: int = 1400
     CARDS_DRAWN_PER_ROUND: int = 2
+    GAME_OVER_MS: int = 3000
 
     def __init__(self) -> None:
         if not GlobalHolder.player:
@@ -103,6 +107,8 @@ class BattlePage(BasePage):
         self.choosing_new_active: BattlePlayer | None = None
         self.pending_pass: bool = False
         self.winner: BattlePlayer | None = None
+        self.battle_start_ms: int | None = None
+        self.game_over_until_ms: int | None = None
 
         super().__init__()
 
@@ -121,7 +127,7 @@ class BattlePage(BasePage):
         return Player(
             uid="234",
             username="Player",
-            user_info=UserInfo(uid="234", xp=200, active_deck_uid="1", deck_list_uid=["1"]),
+            user_info=UserInfo(uid="234", xp=200, battle_wins=0, total_battles=0, active_deck_uid="1", deck_list_uid=["1"]),
             user_decks=[deck],
         )
 
@@ -342,22 +348,24 @@ class BattlePage(BasePage):
         surface: Surface = pygame.Surface(size=self.DIE_SIZE, flags=pygame.SRCALPHA)
         rect = surface.get_rect()
         color: tuple[int, int, int] = self.DIE_COLORS[face]
-        _ = pygame.draw.rect(surface=surface, color=(34, 40, 60), rect=rect, border_radius=16)
-        _ = pygame.draw.rect(surface=surface, color=color, rect=rect, width=4, border_radius=16)
+        size = self.DIE_SIZE[0]
+        corner = max(8, round(size * 0.19))
+        _ = pygame.draw.rect(surface=surface, color=(34, 40, 60), rect=rect, border_radius=corner)
+        _ = pygame.draw.rect(surface=surface, color=color, rect=rect, width=max(3, round(size * 0.05)), border_radius=corner)
 
         if face == "omni":
             # There is no Omni icon asset, so draw a four-point star in its place.
             cx, cy = rect.center
-            outer, inner = 28, 9
             points: list[tuple[float, float]] = []
             for i in range(8):
-                radius = outer if i % 2 == 0 else inner
+                radius = size * (0.33 if i % 2 == 0 else 0.11)
                 angle = math.pi / 4 * i - math.pi / 2
                 points.append((cx + radius * math.cos(angle), cy + radius * math.sin(angle)))
             _ = pygame.draw.polygon(surface=surface, color=color, points=points)
-            _ = pygame.draw.circle(surface=surface, color=(255, 255, 255), center=rect.center, radius=5)
+            _ = pygame.draw.circle(surface=surface, color=(255, 255, 255), center=rect.center, radius=max(3, round(size * 0.06)))
         else:
-            icon: Surface = pygame.transform.smoothscale(surface=GlobalHolder.load_image(image_key=f"element_{face}"), size=(64, 64))
+            icon_size = max(24, round(size * 0.76))
+            icon: Surface = pygame.transform.smoothscale(surface=GlobalHolder.load_image(image_key=f"element_{face}"), size=(icon_size, icon_size))
             _ = surface.blit(source=icon, dest=icon.get_rect(center=rect.center))
         return surface
 
@@ -632,6 +640,8 @@ class BattlePage(BasePage):
         self.selected_hand_index = None
         self.choosing_new_active = None
         self.pending_pass = False
+        if self.battle_start_ms is None:
+            self.battle_start_ms = pygame.time.get_ticks()
         logs: list[str] = self.engine.start_action_phase()
         self._refresh_battlefield()
         self._begin_turn(player=self.first_player or self.battle_player)
@@ -828,6 +838,8 @@ class BattlePage(BasePage):
                 side.set_active_character(index=side.alive_indexes()[0])
 
     def _finish_game(self, winner: BattlePlayer) -> None:
+        if self.winner is not None:
+            return
         self.winner = winner
         self.battle_sub_event["game_over"] = True
         self.bot_action_due_ms = None
@@ -836,6 +848,27 @@ class BattlePage(BasePage):
         self.game_over_title.text_option.set_color(color=(255, 214, 90) if you_won else (236, 120, 120))
         self.game_over_title.set_text(text="You Win!" if you_won else "You Lose")
         self._show_banner(text="You Win!" if you_won else "You Lose")
+        self._record_battle_result(won=you_won)
+        self.game_over_until_ms = pygame.time.get_ticks() + self.GAME_OVER_MS
+
+    def _record_battle_result(self, won: bool) -> None:
+        player: Player | None = GlobalHolder.player
+        if player is None:
+            return
+        now: int = pygame.time.get_ticks()
+        elapsed_ms: int = now - (self.battle_start_ms or now)
+        characters_alive: int = len(self.battle_player.alive_indexes())
+        xp_gained: int = player.record_battle(won=won, elapsed_ms=elapsed_ms, characters_alive=characters_alive)
+        self.db.update_user_info(
+            user_id=player.uid,
+            xp=player.user_info["xp"],
+            battle_wins=player.user_info["battle_wins"],
+            total_battles=player.user_info["total_battles"],
+        )
+        if won:
+            self.game_over_subtitle.set_text(text=f"+{xp_gained} XP  •  {characters_alive} character(s) remaining")
+        else:
+            self.game_over_subtitle.set_text(text="All characters on one side have fallen")
 
     def _board_character_pos(self, index: int, is_player: bool, active: bool) -> tuple[int, int]:
         x: int = self.BOARD_CHARACTER_XS[index]
@@ -989,6 +1022,8 @@ class BattlePage(BasePage):
             self._update_dice_animation()
         if self._action_phase_open():
             self._update_action_phase()
+        if self.game_over_until_ms is not None and pygame.time.get_ticks() >= self.game_over_until_ms:
+            self.change_page(new_state="main_menu")
 
     def confirm_starting_hand(self) -> None:
         if self.hand_confirmed:

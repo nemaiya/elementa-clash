@@ -62,39 +62,51 @@ class Auth(BasePage):
             # Check if the text length is between the minimum and maximum length
             text_length: int = len(text)
             if text_length < min or text_length > max:
+                # Return False if the text length is not between the minimum and maximum length
                 return False
+            # Return True if the text length is between the minimum and maximum length
             return True
+        
         # The username input is initialised with the placeholder of Username and position at the centered axis with the maximum character of 10
         self.username_input: TextInput = TextInput(image_option=ImageOption(image=self.load_image(image_key="text_input1")), text_option=TextOption(text="", size=16, color=(128, 103, 89)), placeholder="Username", position=(480, 274), anchor="center", max_length=10) # pyright: ignore[reportUninitializedInstanceVariable]
+        # Set the validations for the username input
         self.username_input.validations = [( lambda text: constrains(text) , "The username can only contain a-z, 0-9 and . _"), (length_check, "The username must be between 5-10 characters")]
         
         self.password_input: TextInput = TextInput(image_option=ImageOption(image=self.load_image(image_key="text_input1")), text_option=TextOption(text="", size=16, color=(128, 103, 89)), placeholder="Password", position=(480, 354), anchor="center", password=True) # pyright: ignore[reportUninitializedInstanceVariable]
+        # Set the validations for the password input
         self.password_input.validations = [(lambda text: length_check(text=text, min=8, max=15), "The password should be between 8-15 chars long"), (lambda text: text != self.username_input.text, "Password cannot be the same as the username")]
 
+        # Create the confirm password input
         self.confirm_password_input: TextInput = TextInput(image_option=ImageOption(image=self.load_image(image_key="text_input1")), text_option=TextOption(text="", size=14, color=(128, 103, 89)), placeholder="Confirm Password", position=(480, 434), anchor="center", password=True) # pyright: ignore[reportUninitializedInstanceVariable]
+        # Set the validations for the confirm password input
         self.confirm_password_input.validations = [(lambda text: length_check(text=text, min=8, max=15), "The password should be between 8-15 chars long"), (lambda text: text != self.username_input.text, "Password cannot be the same as the username"), (lambda text: text == self.password_input.text, "Passwords do not match!")]
 
+        # Create a smaller button surface for the submit buttons
         smaller_btn_surface: Surface = self.resize_image(image=self.load_image(image_key="button1"), size=(120, 30))
+        # Create the submit sign in button
         self.submit_sign_in: Button = Button(image_option=ImageOption(image=smaller_btn_surface), text_option=TextOption(text="Sign In", size=12), position=(480, 420), anchor="center") # pyright: ignore[reportUninitializedInstanceVariable]
+        # Create the submit sign up button
         self.submit_sign_up: Button = Button(image_option=ImageOption(image=smaller_btn_surface), text_option=TextOption(text="Sign Up", size=12), position=(480, 490), anchor="center") # pyright: ignore[reportUninitializedInstanceVariable]
         # Load the eye open and closed images
         self.eye_open_image: Surface = self.load_image(image_key="eye_open")
         self.eye_closed_image: Surface = self.load_image(image_key="eye_closed")
         # Initialize the toggle password button with the eye open image
         self.toggle_password: Button = Button(image_option=ImageOption(image=self.eye_open_image), text_option=TextOption(text="", size=0), key=pygame.K_v, position=(int(self.password_input.surface.rect.centerx + self.password_input.surface.rect.width * 0.6), self.password_input.surface.rect.centery), anchor="center") # pyright: ignore[reportUninitializedInstanceVariable]
-        self.go_back_button: Button = Button(image_option=ImageOption(colored_image=((20,20,20), (20,20))), text_option=TextOption(text="", size=0), key=pygame.K_b, position=(690, 430) ) # pyright: ignore[reportUninitializedInstanceVariable]
+        # Initialize the go back button with the go back image
+        self.go_back_button: Button = Button(image_option=ImageOption(image=self.load_image(image_key="go_back")), text_option=TextOption(text="", size=0), key=pygame.K_b, position=(690, 430) ) # pyright: ignore[reportUninitializedInstanceVariable]
         return
 
     @final
     @override
     def update(self) -> None:
         super().update()
+        # Check if the response queue is empty
         if self.db.response_queue.empty():
             return
 
-        res: Response = self.db.response_queue.get_nowait()
-        if res.action == "sign_in":
-            if res.success:
+        res: Response = self.db.response_queue.get_nowait() # Get the response from the response queue
+        if res.action == "sign_in": # Check if the action is sign in
+            if res.success: # Check if the sign in is successful
                 print("Sign in")
                 user_data = res.user_data["user_data"]
                 user_info = res.user_data["user_info"]
@@ -102,11 +114,11 @@ class Auth(BasePage):
                 GlobalHolder.player = Player(uid=user_data["id"], username=user_data["username"], user_info=user_info, user_decks=deck_data)
                 self.next_page = "main_menu"
                 self.change_page(new_state="main_menu") 
-            else:
-                self.username_input.errors.append(res.message)
-                self.username_input.validate_text(text=self.username_input.text)
-        elif res.action == "sign_up":
-            if res.success:
+            else: # Print the error message if the sign in is not successful
+                self.username_input.errors.append(res.message) # Add the error message to the username input
+                self.username_input.validate_text(text=self.username_input.text) # Validate the username input
+        elif res.action == "sign_up": # Check if the action is sign up
+            if res.success: # Check if the sign up is successful
                 print("Created")
 
                 # From Deck Phase
@@ -117,7 +129,7 @@ class Auth(BasePage):
                 deck4 = DeckData(user_id=user_id, uid=self.db.generate_uid(), name="Deck 4", characters=[], action_cards=[])
                 deck_data = [deck1, deck2, deck3, deck4]
 
-                user_info = UserInfo(uid=user_id, xp=0, active_deck_uid=deck1["uid"], deck_list_uid=[deck1["uid"], deck2["uid"], deck3["uid"], deck4["uid"]])
+                user_info = UserInfo(uid=user_id, xp=0, battle_wins=0, total_battles=0, active_deck_uid=deck1["uid"], deck_list_uid=[deck1["uid"], deck2["uid"], deck3["uid"], deck4["uid"]])
 
                 self.db.create_new_user_info(user_info=user_info)
                 self.db.create_new_deck(user_id=user_id, deck_data=deck_data)
@@ -138,13 +150,14 @@ class Auth(BasePage):
 
 
     def set_main(self) -> None:
+        # Set the main section as true and disable all other auth sections.
         self.auth_sub_events["main"] = True
-        self.auth_sub_events["sign_in"] = False
-        self.auth_sub_events["sign_up"] = False
-        self.auth_sub_events["security_overlay"] = False
+        self.auth_sub_events["sign_in"] = False # Set the sign in section as false
+        self.auth_sub_events["sign_up"] = False # Set the sign up section as false
+        self.auth_sub_events["security_overlay"] = False  # Set the security overlay section as false
 
-        self.text_surface.text_option.set_text(text="Welcome to Elementa Clash")
-        self.update_layout()
+        self.text_surface.text_option.set_text(text="Welcome to Elementa Clash") # Set the text of the text surface to "Welcome to Elementa Clash"
+        self.update_layout() # Update the layout of the page
 
     def set_sign_in(self, clear: bool=False) -> None: 
         # Set the sign_in section as true and disable all other auth sections.
@@ -157,19 +170,19 @@ class Auth(BasePage):
 
         # Update the page title for the sign-in screen.
         self.text_surface.text_option.set_text(text="Welcome Back Player")
-        
+
         # Reset the input positions to the standard sign-in layout.
-        self.username_input.change_base_position(position=(480, 274))
-        self.password_input.change_base_position(position=(480, 354))
-        self.toggle_password.change_base_position(position=(int(self.password_input.surface.rect.centerx + self.password_input.surface.rect.width * 0.6), 354))
+        self.username_input.change_base_position(position=(480, 274)) # Change the base position of the username input to the standard sign-in layout
+        self.password_input.change_base_position(position=(480, 354)) # Change the base position of the password input to the standard sign-in layout
+        self.toggle_password.change_base_position(position=(int(self.password_input.surface.rect.centerx + self.password_input.surface.rect.width * 0.6), 354)) # Change the base position of the toggle password button to the standard sign-in layout
 
         # Clear any previously entered sign-in values when requested.
         if clear:
-            self.username_input.clear_text()
-            self.password_input.clear_text()
+            self.username_input.clear_text() # Clear the text from the username input
+            self.password_input.clear_text() # Clear the text from the password input
             
         # Refresh the UI to apply the updated auth state and layout.
-        self.update_layout()
+        self.update_layout() # Update the layout of the page
     
     def set_sign_up(self, clear: bool=False) -> None: 
         # Activate the sign-up section and hide the other authentication sections.
@@ -188,11 +201,11 @@ class Auth(BasePage):
         self.toggle_password.change_base_position(position=(int(self.password_input.surface.rect.centerx + self.password_input.surface.rect.width * 0.6), 314))
 
         if clear:
+            # Clear the text from the input fields
             self.username_input.clear_text()
             self.password_input.clear_text()
             self.confirm_password_input.clear_text()
-            
-        self.update_layout()
+        self.update_layout() # Update the layout of the page
 
     def generate_security_code(self) -> None:
         self.security_code_value = random.randint(100000, 999999)
@@ -209,13 +222,15 @@ class Auth(BasePage):
         self.db.sign_up(username, password, self.security_code_value)
 
     def submit_sign_in_form(self) -> None:
+        # Get the username and password from the input fields
         username: str = self.username_input.text
         password: str = self.password_input.text
 
-        if username and password:
+        if username and password: # Check if the username and password are not empty
             print("Validating the sign in info")
+            # Validate the sign in info
             self.db.sign_in(username, password)
-        else:
+        else: # Print the error message if the username or password is empty
             print("Please enter both")
         return
 
@@ -274,12 +289,13 @@ class Auth(BasePage):
         # Sub Page Controls
         # Add the on_activate callback so that when its clicked the set_main callback is run
         self.go_back_button.on_activate = self.set_main
+        # Add the listers for the go back button
         self.go_back_button.add_event_listeners(page_state=self.current_page, condition=active_form_condition)
 
         # Add the on_activate callback so that when its clicked the submit_sign_in_form callback is run
         self.submit_sign_in.on_activate = self.submit_sign_in_form
         # Add the listers for the submit_sign_in button
-        self.submit_sign_in.add_event_listeners(page_state=self.current_page, condition=lambda: self.auth_sub_events["sign_in"] and not self.auth_sub_events["security_overlay"] and self.username_input.valid and self.password_input.valid)
+        self.submit_sign_in.add_event_listeners(page_state=self.current_page, condition=lambda: active_form_condition() and self.username_input.valid and self.password_input.valid and not self.auth_sub_events["sign_up"])
 
         # Add the on_activate callback so that when its clicked the submit_sign_up_form callback is run
         self.submit_sign_up.on_activate = self.submit_sign_up_form
@@ -337,20 +353,20 @@ class Auth(BasePage):
         self.password_input.draw()
         # Draw the toggle password button
         self.toggle_password.draw()
-        #return
-        self.go_back_button.draw()
+        # Draw the submit sign in button
         self.submit_sign_in.draw()
+        self.go_back_button.draw()
 
     def draw_sign_up(self) -> None:
         # Draw the sign-up form fields and actions.
-        self.username_input.draw()
-        #return
-        self.password_input.draw()
-        self.confirm_password_input.draw()
-        self.toggle_password.draw()
+        self.username_input.draw() # Draw the username input
+        self.password_input.draw() # Draw the password input
+        self.confirm_password_input.draw() # Draw the confirm password input
+        self.toggle_password.draw() # Draw the toggle password button
 
-        self.go_back_button.draw()
-        self.submit_sign_up.draw()
+        self.go_back_button.draw() # Draw the go back button
+        return
+        self.submit_sign_up.draw() # Draw the submit sign up button
 
     def draw_security_overlay(self) -> None:
         # Draw the security-code verification overlay and its controls.

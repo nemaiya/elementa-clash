@@ -14,7 +14,7 @@ class LocalDatabase:
         self._init_tables()
 
     def _init_tables(self) -> None:
-        # Create the 
+        # Create the user_cache table to store the user's authentication data
         _ = self.cursor.execute("""
             CREATE TABLE IF NOT EXISTS user_cache (
                 id TEXT PRIMARY KEY,
@@ -73,27 +73,21 @@ class LocalDatabase:
         self.conn.commit()
 
     def verify_credentials(self, username: str, password_hash: str) -> tuple[bool, dict[str, str] | None]:
-        """
-        Checks local cache. Returns a tuple: (Success Boolean, Flat User Data Dictionary)
-        """
+        # Retrieve the user's authentication data from the local cache
         _ = self.cursor.execute(
             "SELECT id, username, password, lastAuth FROM user_cache WHERE username = ?",
             (username,)
         )
+        # Fetch the user's authentication data from the local cache
         row = self.cursor.fetchone()
-        
+        # Check if the user's authentication data is found
         if row:
             cached_id, cached_user, cached_pass, cached_auth = row
-            if cached_pass == password_hash:
-                flat_user_data = {
-                    "id": cached_id,
-                    "username": cached_user,
-                    "password": cached_pass,
-                    "lastAuth": cached_auth
-                }
-                return True, flat_user_data
+            if cached_pass == password_hash: # Compare the password hash with the user's authentication data
+                flat_user_data = { "id": cached_id, "username": cached_user, "password": cached_pass, "lastAuth": cached_auth }
+                return True, flat_user_data # Return True if the password hash matches the user's authentication data
                 
-        return False, None
+        return False, None # Return False if the password hash does not match the user's authentication data
 
     def update_last_auth(self, username: str, timestamp: str) -> None:
         """Updates the local login timestamp."""

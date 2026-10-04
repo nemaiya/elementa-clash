@@ -3,7 +3,7 @@ from typing import Literal, TypeAlias, Callable
 from pygame import Rect
 
 # Custom Types
-PageType: TypeAlias = Literal["global", "authenticate", "setting", "main_menu", "deck_menu", "battle", "test"]
+PageType: TypeAlias = Literal["global", "authenticate", "setting", "main_menu", "deck_menu", "battle", "test", "leaderboard"]
 
 
 KeyState: TypeAlias = Literal["pressed", "holding", "released"]

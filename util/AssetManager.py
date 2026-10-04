@@ -55,6 +55,7 @@ images: dict[str, Path] = {
     "text_input1": parent_dir / "assets" / "images" / "text_input1.png",
     "eye_open": parent_dir / "assets" / "images" / "eye_open.png",
     "eye_closed": parent_dir / "assets" / "images" / "eye_closed.png",
+    "go_back": parent_dir / "assets" / "images" / "go_back_icon.png",
 
 
     "setting1": parent_dir / "assets" / "images" / "setting_icon_32_32.png",

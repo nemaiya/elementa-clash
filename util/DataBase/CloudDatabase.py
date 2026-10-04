@@ -3,13 +3,13 @@ import hashlib
 import requests
 from datetime import datetime, timezone
 from requests.models import Response
-from util.Game.Player import DeckData, UserInfo
+from util.Game.Player import DeckData, LeaderboardEntry, UserInfo
 
 PROJECT_ID = "elementa-clash"
 
 class CloudDatabase():
     def __init__(self) -> None:
-        # Only keeping the Realtime DB URL
+        # Store the URL of the cloud database
         self.realtime_url: str = f"https://{PROJECT_ID}-default-rtdb.firebaseio.com"
     
     def username_exists(self, username: str) -> bool:
@@ -44,35 +44,28 @@ class CloudDatabase():
             return False
     
     def verify_credentials(self, username: str, password_hash: str) -> tuple[bool, dict[str, str] | None, str]:
+        # Store the URL of the user's authentication data
         url: str = f"{self.realtime_url}/users_auth/{username}.json"
         
         try:
-            res: Response = requests.get(url, timeout=4)
-            
-            if res.status_code != 200:
+            res: Response = requests.get(url, timeout=4) # Get the user's authentication data
+            if res.status_code != 200: # Return False if the user's authentication data is not found
                 return False, None, f"Cloud: Database error {res.status_code} - {res.text}"
+
+            data = res.json() # Get the user's authentication data by converting the response to a JSON object
             
-            data = res.json()
-            
-            # 1. Check if user exists (RTDB returns None/null if path doesn't exist)
-            if data is None:
+            if data is None: # Return False if the user's authentication data is not found
                 return False, None, f"Cloud: User '{username}' does not exist."
             
-            # 2. Extract data directly
-            cloud_password = data.get("password")
+            cloud_password = data.get("password") # Extract the password from the user's authentication data
             
-            # 3. Compare the hashes
-            if cloud_password == password_hash:
-                flat_user_data = {
-                    "id": data.get("id", ""),
-                    "username": data.get("username", ""),
-                    "password": cloud_password,
-                    "lastAuth": data.get("lastAuth", ""),
-                    "security_code": data.get("security_code", "")
+            if cloud_password == password_hash: # Compare the password hash with the user's authentication data
+                flat_user_data = { # Create a user data dictionary
+                    "id": data.get("id", ""), "username": data.get("username", ""), "password": cloud_password, "lastAuth": data.get("lastAuth", ""), "security_code": data.get("security_code", "")
                 }
-                return True, flat_user_data, "Login Successful"
+                return True, flat_user_data, "Login Successful" # Return True if the password hash matches the user's authentication data
             else:
-                return False, None, f"Cloud: Password mismatch for '{username}'."
+                return False, None, f"Cloud: Password mismatch for '{username}'." # Return False if the password hash does not match the user's authentication data
                 
         except requests.RequestException as e:
             return False, None, f"Cloud: Network error - {e}"
@@ -82,6 +75,8 @@ class CloudDatabase():
         payload: dict[str, int | str | list[str]] = {
             "id": user['uid'],
             "xp": user['xp'],
+            "battleWins": user['battle_wins'],
+            "totalBattles": user['total_battles'],
             "activeDeckUid": user['active_deck_uid'],
             "deckListUid": user['deck_list_uid']
         }
@@ -106,6 +101,8 @@ class CloudDatabase():
             user_info: UserInfo = UserInfo(
                 uid=str(data.get("id", user_id)),
                 xp=int(data.get("xp", 0) or 0),
+                battle_wins=int(data.get("battleWins", 0) or 0),
+                total_battles=int(data.get("totalBattles", 0) or 0),
                 active_deck_uid=str(data.get("activeDeckUid", "")),
                 deck_list_uid=list(data.get("deckListUid", [])),
             )
@@ -113,12 +110,16 @@ class CloudDatabase():
         except requests.RequestException as e:
             return False, None, f"Cloud: Network error - {e}"
     
-    def update_user_info(self, user_id: str, xp: int | None = None, active_deck_uid: str | None = None, deck_list_uid: list[str] | None = None) -> bool:
+    def update_user_info(self, user_id: str, xp: int | None = None, battle_wins: int | None = None, total_battles: int | None = None, active_deck_uid: str | None = None, deck_list_uid: list[str] | None = None) -> bool:
         url: str = f"{self.realtime_url}/users_info/{user_id}.json"
         payload: dict[str, int | str | list[str]] = {}
         
         if xp is not None:
             payload["xp"] = xp
+        if battle_wins is not None:
+            payload["battleWins"] = battle_wins
+        if total_battles is not None:
+            payload["totalBattles"] = total_battles
         if active_deck_uid is not None:
             payload["activeDeckUid"] = active_deck_uid
         if deck_list_uid is not None:
@@ -224,6 +225,46 @@ class CloudDatabase():
             if data is None or not isinstance(data, dict):
                 return False, None, f"Cloud: Deck '{deck_id}' does not exist."
             return True, self._parse_deck(deck_id=deck_id, data=data, fallback_user_id=user_id), "Deck retrieved successfully."
+        except requests.RequestException as e:
+            return False, None, f"Cloud: Network error - {e}"
+
+    def get_leaderboard_entries(self) -> tuple[bool, list[LeaderboardEntry] | None, str]:
+        info_url: str = f"{self.realtime_url}/users_info.json"
+        auth_url: str = f"{self.realtime_url}/users_auth.json"
+        try:
+            info_res: Response = requests.get(info_url, timeout=6)
+            auth_res: Response = requests.get(auth_url, timeout=6)
+            if info_res.status_code != 200:
+                return False, None, f"Cloud: Database error {info_res.status_code} - {info_res.text}"
+            if auth_res.status_code != 200:
+                return False, None, f"Cloud: Database error {auth_res.status_code} - {auth_res.text}"
+
+            info_data = info_res.json()
+            auth_data = auth_res.json()
+
+            id_to_username: dict[str, str] = {}
+            if isinstance(auth_data, dict):
+                for username, payload in auth_data.items():
+                    if not isinstance(payload, dict):
+                        continue
+                    uid = str(payload.get("id", ""))
+                    if uid:
+                        id_to_username[uid] = str(payload.get("username", username))
+
+            entries: list[LeaderboardEntry] = []
+            if isinstance(info_data, dict):
+                for key, payload in info_data.items():
+                    if not isinstance(payload, dict):
+                        continue
+                    uid = str(payload.get("id", key))
+                    entries.append(LeaderboardEntry(
+                        uid=uid,
+                        username=id_to_username.get(uid, "Unknown"),
+                        xp=int(payload.get("xp", 0) or 0),
+                        battle_wins=int(payload.get("battleWins", 0) or 0),
+                        total_battles=int(payload.get("totalBattles", 0) or 0),
+                    ))
+            return True, entries, "Leaderboard retrieved successfully."
         except requests.RequestException as e:
             return False, None, f"Cloud: Network error - {e}"
 

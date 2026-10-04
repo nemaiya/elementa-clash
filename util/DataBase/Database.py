@@ -1,4 +1,4 @@
-from util.Game.Player import DeckData, UserInfo
+from util.Game.Player import DeckData, LeaderboardEntry, UserInfo
 
 from .CloudDatabase import CloudDatabase
 from .LocalDatabase import LocalDatabase
@@ -14,7 +14,7 @@ class Response(NamedTuple):
     action: str  # "register" or "login"
     success: bool
     message: str
-    user_data: dict[str, str] | UserInfo | None = None
+    user_data: dict[str, object] | UserInfo | list[LeaderboardEntry] | None = None
 
 class MasterDatabase():
     def __init__(self) -> None:
@@ -55,16 +55,20 @@ class MasterDatabase():
         return
     
     def sign_in(self, username: str, password: str) -> None:
+        # Hash the password
         password_hash: str = self.hash_password(password)
+        # Start the background thread/parallel processing
         def _task() -> None:
             success, user_data, message = self.cloud.verify_credentials(username, password_hash)
             
             if success and user_data:
-                # 3. Save the incoming cloud data into the local database
-                # (Make sure 'save_user_data' matches whatever method name your LocalDatabase uses)
+
+
                 try:
+                    # Save the user's authentication data into the local database
                     self.local.save_user_auth_data(user_id=user_data.get("id", ""), username=user_data.get("username", ""), password_hash=user_data.get("password", ""), timestamp=self.get_current_timestamp())
                 except Exception as e:
+                    # Print the warning message
                     print(f"Warning: Could not save to local database: {e}")
                 
                 user_id: str = user_data.get("id", "")
@@ -77,14 +81,15 @@ class MasterDatabase():
                     self.response_queue.put(item=Response(action="sign_in", success=False, message=decks_message, user_data=None))
                     return
                 # 4. Send success back to Pygame loop
+
+
+                #self.response_queue.put(item=Response(action="sign_in", success=True, message=message, user_data=user_data)) # Send the success response to the game loop
                 self.response_queue.put(item=Response(action="sign_in", success=True, message=message, user_data={"user_data": user_data, "user_info": user_info, "deck_data": deck_data}))
             else:
-                #print(message)
-                # 5. Send failure back to Pygame loop
+                # Send the failure response to the game loop
                 self.response_queue.put(item=Response(action="sign_in", success=False, message=message, user_data=None))
-            return
-            
-        threading.Thread(target=_task, daemon=True).start()
+            return 
+        threading.Thread(target=_task, daemon=True).start() # Start the background thread
         return
     
     def sign_up(self, username: str, password: str, security_code: int) -> None:
@@ -161,6 +166,18 @@ class MasterDatabase():
         threading.Thread(target=_task, daemon=True).start()
         return
     
+    def get_leaderboard(self) -> None:
+        def _task() -> None:
+            success, entries, message = self.cloud.get_leaderboard_entries()
+            if success and entries is not None:
+                self.response_queue.put(item=Response(action="get_leaderboard", success=True, message=message, user_data=entries))
+            else:
+                self.response_queue.put(item=Response(action="get_leaderboard", success=False, message=message, user_data=None))
+            return
+
+        threading.Thread(target=_task, daemon=True).start()
+        return
+
     def get_user_info(self, user_id: str) -> None:
         def _task() -> None:
             success, user_info, message = self.cloud.get_user_info(user_id=user_id)
@@ -173,9 +190,9 @@ class MasterDatabase():
         threading.Thread(target=_task, daemon=True).start()
         return
     
-    def update_user_info(self, user_id: str, xp: int | None = None, active_deck_uid: str | None = None, deck_list_uid: list[str] | None = None) -> None:
+    def update_user_info(self, user_id: str, xp: int | None = None, battle_wins: int | None = None, total_battles: int | None = None, active_deck_uid: str | None = None, deck_list_uid: list[str] | None = None) -> None:
         def _task() -> None:
-            success: bool = self.cloud.update_user_info(user_id=user_id, xp=xp, active_deck_uid=active_deck_uid, deck_list_uid=deck_list_uid)
+            success: bool = self.cloud.update_user_info(user_id=user_id, xp=xp, battle_wins=battle_wins, total_battles=total_battles, active_deck_uid=active_deck_uid, deck_list_uid=deck_list_uid)
             if success:
                 self.response_queue.put(item=Response(action="update_user_info", success=True, message="User info updated successfully.", user_data=None))
             else:

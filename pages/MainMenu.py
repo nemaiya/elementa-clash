@@ -52,6 +52,7 @@ class MainMenu(BasePage):
         self.deck_setup_button.add_event_listeners(page_state="main_menu", condition=condition)
 
         
+        self.leaderboard_button.on_activate = lambda: self.change_page(new_state="leaderboard")
         self.leaderboard_button.add_event_listeners(page_state="main_menu", condition=condition)
         self.tutorial_button.add_event_listeners(page_state="main_menu", condition=condition)
         return

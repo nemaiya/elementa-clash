@@ -13,6 +13,7 @@ from pages.Auth     import Auth
 from pages.Deck     import DeckPage as Deck
 from pages.Battle   import BattlePage
 from pages.TestPage import TestPage
+from pages.Leaderboard import LeaderboardPage
 from CustomTypes import PageType
 
 class GameManager():
@@ -26,7 +27,8 @@ class GameManager():
         "main_menu": MainMenu,
         "deck_menu": Deck,
         "battle": BattlePage,
-        "test": TestPage
+        "test": TestPage,
+        "leaderboard": LeaderboardPage,
     }
 
     def __init__(self) -> None:

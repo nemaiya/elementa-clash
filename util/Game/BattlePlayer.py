@@ -9,7 +9,7 @@ import random
 
 # Every die has one face per element plus an Omni face, which can pay for any element.
 DIE_FACES: list[ElementalTypes] = ["omni", "pyro", "hydro", "anemo", "electro", "dendro", "cryo", "geo"]
-DICE_PER_ROLL: int = 8
+DICE_PER_ROLL: int = 16
 MAX_HAND_SIZE: int = 10
 MAX_SUPPORTS: int = 4
 SWITCH_COST: int = 1
@@ -245,7 +245,7 @@ class OtherBattlePlayer(BattlePlayer):
             self.player: Player = Player(
                 uid="0", 
                 username="Bot", 
-                user_info=UserInfo(uid="0", xp=1, active_deck_uid="1", deck_list_uid=["1"]),
+                user_info=UserInfo(uid="0", xp=1, battle_wins=0, total_battles=0, active_deck_uid="1", deck_list_uid=["1"]),
                 user_decks=[bot_deck]
             )
             
